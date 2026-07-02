@@ -88,18 +88,29 @@ when Firefox restarts, so reload after each restart.
    `<all_urls>` permission (needed to modify requests) — allow it, or grant it
    up front via the add-on's **Permissions** tab in `about:addons`.
 
-Permanent Firefox installs need Mozilla to sign the add-on (AMO), which this
-repo doesn't automate yet — the temporary install above covers day-to-day dev
-use fine.
+**Firefox (permanent, signed):**
+
+For an install that survives restarts, use the signed `.xpi` attached to each
+[Release](../../releases) — open it in Firefox, or drag it onto `about:addons`.
+Firefox add-ons distributed this way are *unlisted* (not on the public AMO
+gallery); Mozilla signs them automatically. Signing is done in CI by the
+[Sign Firefox add-on](.github/workflows/sign-firefox.yml) workflow — see below.
+(The signed `.xpi` installs permanently but doesn't self-update yet; that needs
+the `update_url` + `updates.json` layer, not set up here.)
 
 ## Releasing
 
-A zip is built by the [Pack extension](.github/workflows/pack.yml) workflow:
+Pushing a tag `vX.Y.Z` (matching `manifest.json`) cuts a GitHub Release and runs
+two workflows against it:
 
-- **Push a tag** `vX.Y.Z` (matching `manifest.json`) → a GitHub Release is
-  created with the zip attached.
-- Or run the workflow manually (**Actions → Pack extension → Run workflow**) to
-  get the zip as a downloadable build artifact without cutting a release.
+- [Pack extension](.github/workflows/pack.yml) — builds and attaches the
+  unpacked `nice-header-v*.zip` (Chrome/Firefox dev installs). Can also be run
+  manually to get the zip as a build artifact without a release.
+- [Sign Firefox add-on](.github/workflows/sign-firefox.yml) — signs the add-on
+  as an unlisted `.xpi` via Mozilla's AMO API and attaches it to the release.
+  It authenticates with the `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` repo secrets
+  (from [AMO → API keys](https://addons.mozilla.org/developers/addon/api/key/));
+  rotate them there if they ever need refreshing.
 
 ## How it works
 
