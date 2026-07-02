@@ -1,4 +1,8 @@
 .DS_Store
 *.zip
+*.xpi
 node_modules/
 .idea/
+# build staging / signing output (created in CI, or locally by web-ext)
+dist/
+web-ext-artifacts/

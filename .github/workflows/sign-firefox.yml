@@ -1,0 +1,66 @@
+name: Sign Firefox add-on
+
+# Signs the add-on as an *unlisted* (self-distributed) Firefox .xpi and attaches
+# it to the matching GitHub Release. Unlisted add-ons are signed automatically by
+# Mozilla (no human review), so this needs no manual step once the two secrets
+# below exist.
+#
+# One-time setup (repo admin):
+#   1. Create an API credential at
+#      https://addons.mozilla.org/developers/addon/api/key/
+#   2. Add two repository secrets (Settings → Secrets and variables → Actions):
+#        AMO_JWT_ISSUER  = the "JWT issuer" (API key, starts with "user:")
+#        AMO_JWT_SECRET  = the "JWT secret"
+#
+# Then either push a tag vX.Y.Z (matching manifest.json) or run this manually.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the signed .xpi to (e.g. v1.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Read version from manifest
+        id: manifest
+        run: echo "version=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
+
+      # web-ext lints and packs from a clean dir, so stage only the runtime files
+      # (same set the pack workflow ships) — no README, .git, workflows, examples.
+      - name: Stage extension files
+        run: |
+          mkdir -p dist
+          cp -r manifest.json sw.js rules.js popup.html popup.js popup.css icons dist/
+
+      - name: Sign (unlisted) via AMO
+        run: |
+          npx --yes web-ext@8 sign \
+            --channel=unlisted \
+            --source-dir dist \
+            --artifacts-dir web-ext-artifacts \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET"
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+
+      - name: Attach signed .xpi to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || format('v{0}', steps.manifest.outputs.version) }}
+          files: web-ext-artifacts/*.xpi
