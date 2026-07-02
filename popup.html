@@ -51,7 +51,7 @@
       <p class="help hidden" id="endpointHelp">
         Each source is independent — a URL or a local JSON file, same schema
         (see below). Add as many as you need; refresh fetches every URL source
-        in parallel and all their flags show up merged in one list below.
+        in parallel and all their headers show up merged in one list below.
         File sources aren't auto-refreshed — re-import to update one.
       </p>
 
@@ -84,29 +84,29 @@
       <p class="status" id="status"></p>
 
       <section class="catalogsearch">
-        <input type="text" id="flagFilter" placeholder="Filter flags…" spellcheck="false" />
+        <input type="text" id="flagFilter" placeholder="Filter headers…" spellcheck="false" />
       </section>
 
       <ul id="catalogList" class="rows"></ul>
       <p id="catalogEmpty" class="empty hidden">
-        No flags yet. Add a source above and refresh (or import a file).
+        No headers yet. Add a source above and refresh (or import a file).
       </p>
 
       <details class="schema">
         <summary>Expected response</summary>
         <pre class="mono">{
-  <span class="s-key">"flags"</span>: [
+  <span class="s-key">"headers"</span>: [
     {
-      <span class="s-key">"key"</span>:   <span class="s-str">"checkout.express_pay"</span>,
+      <span class="s-key">"name"</span>:  <span class="s-str">"x-example-header"</span>,
       <span class="s-key">"value"</span>: <span class="s-str">"1"</span>   <span class="s-cmt">// optional, default "1" (e.g. "1;context=de")</span>
     }
   ]
 }</pre>
         <p class="schemahint">
-          <b>key</b> string · <b>value</b> string (optional). Just the dataset of known
-          keys — no on/off state is read from the response. Malformed rows dropped;
-          active flags inject as <code>&lt;key&gt;: &lt;value&gt;</code> — the key is
-          used as the header name exactly as the source sends it.
+          <b>name</b> string · <b>value</b> string (optional). Just the dataset of known
+          header names — no on/off state is read from the response. Malformed rows
+          dropped; active ones inject as <code>&lt;name&gt;: &lt;value&gt;</code> —
+          sent exactly as the source spells it.
         </p>
       </details>
     </div>
