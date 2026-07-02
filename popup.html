@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>NiceHeader</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="brand">NiceHeader</span>
+      <span class="count" id="count"></span>
+      <label class="switch" title="Toggle all headers">
+        <input type="checkbox" id="master" />
+        <span class="slider"></span>
+      </label>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="endpoint">Endpoint</button>
+      <button class="tab" role="tab" data-tab="manual">Manual</button>
+    </div>
+
+    <section class="scope">
+      <div class="labelrow">
+        <label for="urlRegex">URL regex filter</label>
+        <button type="button" class="info" id="urlRegexInfo" aria-label="What is this?" aria-expanded="false">i</button>
+      </div>
+      <p class="help hidden" id="urlRegexHelp">
+        A regex (RE2) matched against each request URL — only matching requests get
+        the headers. Match several hosts with an alternation:
+        <code>(shop|admin)\.example\.dev</code>. Empty or <code>.*</code> = everything.
+      </p>
+      <input
+        type="text"
+        id="urlRegex"
+        class="mono"
+        placeholder="(shop|admin)\.example\.dev — match multiple hosts"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <p class="regexerr hidden" id="urlRegexErr"></p>
+    </section>
+
+    <!-- ENDPOINT TAB -->
+    <div class="pane" id="pane-endpoint">
+      <div class="labelrow endpointlabel">
+        <label>Sources</label>
+        <button type="button" class="info" id="endpointInfo" aria-label="What is this?" aria-expanded="false">i</button>
+      </div>
+      <p class="help hidden" id="endpointHelp">
+        Each source is independent — a URL or a local JSON file, same schema
+        (see below). Add as many as you need; refresh fetches every URL source
+        in parallel and all their flags show up merged in one list below.
+        File sources aren't auto-refreshed — re-import to update one.
+      </p>
+
+      <ul id="sourceList" class="sourcerows"></ul>
+
+      <section class="addsource">
+        <input
+          type="text"
+          id="newSourceUrl"
+          class="mono"
+          placeholder="https://example.com/api/feature-flags"
+          spellcheck="false"
+          autocomplete="off"
+        />
+        <button type="button" id="addSourceUrl" title="Add URL source">+</button>
+        <button type="button" id="addSourceFile" title="Import a local JSON file">File…</button>
+        <input type="file" id="fileInput" accept="application/json,.json" hidden />
+      </section>
+
+      <section class="endpointbar">
+        <button type="button" id="refresh" title="Fetch all URL sources">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" />
+          </svg>
+          Refresh all
+        </button>
+      </section>
+
+      <p class="status" id="status"></p>
+
+      <section class="catalogsearch">
+        <input type="text" id="flagFilter" placeholder="Filter flags…" spellcheck="false" />
+      </section>
+
+      <ul id="catalogList" class="rows"></ul>
+      <p id="catalogEmpty" class="empty hidden">
+        No flags yet. Add a source above and refresh (or import a file).
+      </p>
+
+      <details class="schema">
+        <summary>Expected response</summary>
+        <pre class="mono">{
+  <span class="s-key">"flags"</span>: [
+    {
+      <span class="s-key">"key"</span>:   <span class="s-str">"checkout.express_pay"</span>,
+      <span class="s-key">"value"</span>: <span class="s-str">"1"</span>   <span class="s-cmt">// optional, default "1" (e.g. "1;context=de")</span>
+    }
+  ]
+}</pre>
+        <p class="schemahint">
+          <b>key</b> string · <b>value</b> string (optional). Just the dataset of known
+          keys — no on/off state is read from the response. Malformed rows dropped;
+          active flags inject as <code>&lt;key&gt;: &lt;value&gt;</code> — the key is
+          used as the header name exactly as the source sends it.
+        </p>
+      </details>
+    </div>
+
+    <!-- MANUAL TAB -->
+    <div class="pane hidden" id="pane-manual">
+      <ul id="headerList" class="rows"></ul>
+      <p id="empty" class="empty hidden">No headers yet. Add one below.</p>
+
+      <form id="addForm" class="add">
+        <input type="text" id="newName" placeholder="header name" autocomplete="off" spellcheck="false" />
+        <input type="text" id="newValue" class="value" placeholder="value" autocomplete="off" spellcheck="false" />
+        <button type="submit" title="Add header">+</button>
+      </form>
+
+      <footer class="hint">Any request header, sent as-is.</footer>
+    </div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
