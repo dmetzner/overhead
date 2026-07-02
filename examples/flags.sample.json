@@ -1,9 +1,0 @@
-{
-  "flags": [
-    { "key": "checkout.express_pay" },
-    { "key": "search.ai_ranking" },
-    { "key": "cart.free_shipping_hint" },
-    { "key": "account.passkey_login", "value": "1;context=de" },
-    { "key": "nav.mega_menu_v2" }
-  ]
-}

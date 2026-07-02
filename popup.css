@@ -21,6 +21,9 @@ body {
   color: var(--text);
 }
 
+/* Opened as a full tab (file imports on Firefox) — keep the popup layout, centered. */
+body.tabview { margin: 24px auto; }
+
 .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
 
 .topbar {
