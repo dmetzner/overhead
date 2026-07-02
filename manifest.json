@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "NiceHeader",
+  "version": "1.0.0",
+  "description": "Inject arbitrary request headers per request, with a fast path for dev feature flags.",
+  "permissions": ["declarativeNetRequest", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "sw.js", "type": "module" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "NiceHeader"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
