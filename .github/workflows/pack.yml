@@ -34,7 +34,7 @@ jobs:
         env:
           V: ${{ steps.manifest.outputs.version }}
         run: |
-          shared="sw.js rules.js standard-headers.js popup.html popup.js popup.css icons"
+          shared="sw.js rules.js standard-headers.js popup.html popup popup.css icons"
 
           # Chrome — manifest as committed
           zip -r "overhead-chrome-v${V}.zip" manifest.json $shared -x "*.DS_Store"

@@ -141,7 +141,10 @@
         return new TextDecoder().decode(bytes);
       }
 
-      const code = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
+      // Keep in parity with decodeConfig in rules.js (CONFIG_VERSION = 2;
+      // v2 added sources[].headers) — test/share-page.test.js runs this script.
+      const MAX_VERSION = 2;
+
       const preview = document.getElementById("preview");
       const empty = document.getElementById("empty");
 
@@ -151,51 +154,68 @@
       }
 
       try {
+        // decodeURIComponent throws on malformed %-sequences — it must fail
+        // into the empty state, not blank the page.
+        const code = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
         if (!code) throw new Error("no code");
         const data = JSON.parse(b64urlDecode(code));
-        if (typeof data.v === "number" && data.v > 1) {
+        if (typeof data.v === "number" && data.v > MAX_VERSION) {
           empty.textContent = "This link was made by a newer version of Overhead — update the extension to import it.";
           throw new Error("version");
         }
         const headers = Array.isArray(data.headers) ? data.headers : [];
-        if (!headers.length && !(Array.isArray(data.sources) && data.sources.length)) throw new Error("empty");
+        const sources = (Array.isArray(data.sources) ? data.sources : []).filter(
+          (s) => s && typeof s.url === "string" && s.url.trim(),
+        );
+        if (!headers.length && !sources.length) throw new Error("empty");
 
         const list = document.getElementById("hdrs");
-        headers.forEach((h) => {
-          if (!h || typeof h.name !== "string" || !h.name.trim()) return;
+        function addRow(name, value, pill) {
           const li = document.createElement("li");
           const n = document.createElement("span");
           n.className = "n";
-          n.textContent = h.name.trim();
+          n.textContent = name;
           const v = document.createElement("span");
           v.className = "v";
-          v.textContent = typeof h.value === "string" && h.value !== "" ? h.value : "(empty)";
+          v.textContent = value;
           li.append(n, v);
-          if (h.enabled === false) {
+          if (pill) {
             const off = document.createElement("span");
             off.className = "off";
-            off.textContent = "OFF";
+            off.textContent = pill;
             li.append(off);
           }
           list.append(li);
+        }
+
+        headers.forEach((h) => {
+          if (!h || typeof h.name !== "string" || !h.name.trim()) return;
+          addRow(
+            h.name.trim(),
+            typeof h.value === "string" && h.value !== "" ? h.value : "(empty)",
+            h.enabled === false ? "OFF" : "",
+          );
         });
 
-        (Array.isArray(data.sources) ? data.sources : []).forEach((s) => {
-          if (!s || typeof s.url !== "string" || !s.url.trim()) return;
-          const li = document.createElement("li");
-          const n = document.createElement("span");
-          n.className = "n";
-          n.textContent = "source";
-          const v = document.createElement("span");
-          v.className = "v";
-          v.textContent = s.url.trim();
-          li.append(n, v);
-          list.append(li);
+        let sourceRows = 0;
+        sources.forEach((s) => {
+          addRow("source", s.url.trim());
+          // v2: the sender's selected catalog rows travel with the source.
+          (Array.isArray(s.headers) ? s.headers : []).forEach((h) => {
+            if (!h || typeof h.name !== "string" || !h.name.trim()) return;
+            sourceRows++;
+            addRow(
+              h.name.trim(),
+              typeof h.value === "string" && h.value !== "" ? h.value : "(empty)",
+              "VIA SOURCE",
+            );
+          });
         });
 
         const on = headers.filter((h) => h && h.enabled !== false).length;
+        const total = headers.length + sourceRows;
         document.getElementById("count").textContent =
-          `${headers.length} header${headers.length === 1 ? "" : "s"}${on < headers.length ? ` · ${on} on` : ""}`;
+          `${total} header${total === 1 ? "" : "s"}${on < headers.length ? ` · ${on} on` : ""}`;
 
         const scope = document.getElementById("scope");
         const rx = typeof data.urlRegex === "string" ? data.urlRegex : ".*";

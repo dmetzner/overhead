@@ -8,8 +8,57 @@ export const STORAGE_KEY = "overheadState";
 // storage.local (~5 MB) keyed by source id — keeping the synced config well
 // under storage.sync's ~8 KB per-item cap.
 export const CATALOG_KEY = "overheadCatalogs";
+// Result of the last declarativeNetRequest update, written by applyRules and
+// read by the popup — so the UI never claims "active" when the engine rejected
+// the rule. Lives in storage.local (device-specific, not worth syncing).
+export const RULE_STATUS_KEY = "overheadRuleStatus";
 
 const DEFAULT_URL_REGEX = ".*";
+
+/* ---------- validation ----------
+   updateDynamicRules is atomic: one bad header name/value or an RE2-invalid
+   pattern rejects the whole update and nothing is injected. Validate centrally
+   so every entry point (manual add, inline edit, import, endpoint rows) agrees
+   with what the engine will actually accept. */
+
+// RFC 9110 token — the charset Chromium enforces for header names.
+const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+// Field content: no CR/LF/NUL or other C0 controls (tab allowed).
+const HEADER_VALUE_RE = /^[\t\x20-\x7E\u0080-\uFFFF]*$/;
+
+export function headerNameError(name) {
+  const n = (name ?? "").trim();
+  if (!n) return "Header name is empty.";
+  if (!HEADER_NAME_RE.test(n)) return `"${n}" is not a valid HTTP header name.`;
+  return null;
+}
+
+export function headerValueError(value) {
+  if (!HEADER_VALUE_RE.test(value ?? "")) return "Header value contains control characters.";
+  return null;
+}
+
+// DNR's regexFilter runs RE2, which is stricter than JS RegExp. Syntax-check
+// with RegExp first (fast, works everywhere), then ask the engine itself via
+// isRegexSupported where available (extension contexts).
+export async function urlRegexError(pattern) {
+  const rx = (pattern ?? "").trim() || DEFAULT_URL_REGEX;
+  try {
+    new RegExp(rx);
+  } catch (err) {
+    return err.message;
+  }
+  const dnr = browser?.declarativeNetRequest;
+  if (dnr?.isRegexSupported) {
+    const res = await dnr.isRegexSupported({ regex: rx });
+    if (!res?.isSupported) {
+      return res?.reason === "memoryLimitExceeded"
+        ? "Pattern is too complex for the request-matching engine (RE2)."
+        : "Pattern is not supported by the request-matching engine (RE2).";
+    }
+  }
+  return null;
+}
 
 // Accent presets — shared by the popup swatches and the toolbar badge color.
 export const ACCENTS = {
@@ -22,7 +71,7 @@ export const ACCENTS = {
 };
 export const DEFAULT_ACCENT = "indigo";
 
-function newId(prefix = "s") {
+export function newId(prefix = "s") {
   return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
@@ -65,7 +114,10 @@ export function injectionSig(state) {
    client-side: the blob never touches a server. The /i page on the site decodes
    and previews it; the popup's Import pastes it back. */
 
-export const CONFIG_VERSION = 1;
+// v2 added per-source selections (sources[].headers) so a source-driven profile
+// round-trips as a working setup. Plain shares still encode as v1, so older
+// installs keep importing them. Keep docs/i/index.html's decoder in parity.
+export const CONFIG_VERSION = 2;
 export const SHARE_BASE = "https://overhead.metzner.uk/i";
 
 function b64urlEncode(str) {
@@ -84,22 +136,30 @@ function b64urlDecode(b64) {
 // Serialize the active profile's shareable slice to a URL-safe code.
 export function encodeConfig(state) {
   const prof = activeProfile(state);
+  const sources = (prof.sources ?? [])
+    .filter((s) => s.kind === "url" && s.url && s.url.trim())
+    .map((s) => {
+      const selected = (s.catalog ?? [])
+        .filter((h) => h.active && h.name?.trim())
+        .map((h) => ({ name: h.name.trim(), value: h.value ?? "1" }));
+      return selected.length ? { url: s.url.trim(), headers: selected } : { url: s.url.trim() };
+    });
   const payload = {
-    v: CONFIG_VERSION,
+    v: sources.some((s) => s.headers) ? CONFIG_VERSION : 1,
     name: prof.name,
     urlRegex: prof.urlRegex ?? ".*",
     headers: (prof.headers ?? [])
       .filter((h) => h.name?.trim())
       .map((h) => ({ name: h.name.trim(), value: h.value ?? "", enabled: h.enabled !== false })),
-    sources: (prof.sources ?? [])
-      .filter((s) => s.kind === "url" && s.url && s.url.trim())
-      .map((s) => ({ url: s.url.trim() })),
+    sources,
   };
   return b64urlEncode(JSON.stringify(payload));
 }
 
 // Parse a share code (raw, or a full link — anything after the last "#" is used)
-// into { headers, sources, urlRegex }. Throws on a malformed code.
+// into { name, headers, sources, urlRegex, dropped }. Entries with header names
+// the engine would reject are dropped and counted, so an imported config can
+// never poison the atomic DNR update. Throws on a malformed code.
 export function decodeConfig(input) {
   const code = String(input).trim().split("#").pop().trim();
   if (!code) throw new Error("No config code found.");
@@ -115,22 +175,36 @@ export function decodeConfig(input) {
   if (typeof data.v === "number" && data.v > CONFIG_VERSION) {
     throw new Error("This share code is from a newer version of Overhead — update to import it.");
   }
-  const headers = (Array.isArray(data.headers) ? data.headers : [])
-    .filter((h) => h && typeof h.name === "string" && h.name.trim())
-    .map((h) => ({
-      name: h.name.trim(),
-      value: typeof h.value === "string" ? h.value : "",
-      enabled: h.enabled !== false,
-    }));
+  let dropped = 0;
+  const keepRow = (h) => {
+    const ok =
+      h &&
+      typeof h.name === "string" &&
+      !headerNameError(h.name) &&
+      !headerValueError(typeof h.value === "string" ? h.value : "");
+    if (h && !ok) dropped++;
+    return ok;
+  };
+  const rowValue = (h) => (typeof h.value === "string" ? h.value : "");
+  const headers = (Array.isArray(data.headers) ? data.headers : []).filter(keepRow).map((h) => ({
+    name: h.name.trim(),
+    value: rowValue(h),
+    enabled: h.enabled !== false,
+  }));
   const sources = Array.isArray(data.sources)
     ? data.sources
         .filter((s) => s && typeof s.url === "string" && s.url.trim())
-        .map((s) => s.url.trim())
+        .map((s) => ({
+          url: s.url.trim(),
+          headers: (Array.isArray(s.headers) ? s.headers : [])
+            .filter(keepRow)
+            .map((h) => ({ name: h.name.trim(), value: rowValue(h) })),
+        }))
     : [];
   const urlRegex = typeof data.urlRegex === "string" ? data.urlRegex : null;
   const name =
     typeof data.name === "string" && data.name.trim() ? data.name.trim() : "Shared config";
-  return { name, headers, sources, urlRegex };
+  return { name, headers, sources, urlRegex, dropped };
 }
 
 // Global state holds appearance + which profile is active; each profile owns the
@@ -192,13 +266,42 @@ export async function loadState() {
           : [],
     }));
   }
+  // Migration: duplicated profiles used to clone sources with their ids, making
+  // two sources share one catalog slot (and, after rehydration above, the same
+  // array instance). Give later occurrences a fresh id and their own copy; the
+  // next save persists the split.
+  const seenSourceIds = new Set();
+  for (const p of state.profiles) {
+    for (const s of p.sources) {
+      if (seenSourceIds.has(s.id)) {
+        s.id = newId();
+        s.catalog = structuredClone(s.catalog);
+      }
+      seenSourceIds.add(s.id);
+    }
+  }
   return state;
 }
 
 // Writes the small config to storage.sync and the bulky catalogs to
 // storage.local. Returns {ok} / {ok:false, error} — callers surface failures
 // instead of the write silently vanishing. See CATALOG_KEY.
-export async function saveState(state) {
+//
+// The two writes can't be one transaction, so: saves are serialized through a
+// queue (concurrent persists can't interleave their writes), and sync — the
+// source of truth for which sources exist — is written first. If the catalog
+// write then fails, the worst case is a source showing "not fetched yet" until
+// the next refresh; the reverse order could leave stale catalogs injecting
+// under a config that no longer matches them.
+let saveQueue = Promise.resolve();
+
+export function saveState(state) {
+  const run = saveQueue.then(() => writeState(state));
+  saveQueue = run.catch(() => {}); // keep the queue alive after a failed save
+  return run;
+}
+
+async function writeState(state) {
   const catalogs = {};
   const synced = {
     ...state,
@@ -211,8 +314,8 @@ export async function saveState(state) {
     })),
   };
   try {
-    await browser.storage.local.set({ [CATALOG_KEY]: catalogs });
     await browser.storage.sync.set({ [STORAGE_KEY]: synced });
+    await browser.storage.local.set({ [CATALOG_KEY]: catalogs });
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err?.message || String(err) };
@@ -240,14 +343,26 @@ export function normalizeCatalog(data) {
   return { headers, dropped };
 }
 
+// One stalled endpoint must not hang a refresh forever (the popup awaits all
+// sources) — cut every fetch off after this long.
+const FETCH_TIMEOUT_MS = 10_000;
+
 export async function fetchCatalog(url) {
   const target = (url ?? "").trim();
   if (!target) throw new Error("No endpoint URL configured.");
   let res;
   try {
-    res = await fetch(target, { headers: { Accept: "application/json" }, cache: "no-store" });
-  } catch {
-    throw new Error("Request failed — check the URL and host permissions.");
+    res = await fetch(target, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new Error(
+      err?.name === "TimeoutError"
+        ? `Timed out after ${FETCH_TIMEOUT_MS / 1000} s.`
+        : "Request failed — check the URL and host permissions.",
+    );
   }
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
   let data;
@@ -266,6 +381,8 @@ export function mergeCatalog(prevHeaders, freshHeaders) {
   return freshHeaders.map((h) => ({ ...h, active: prev.get(h.name)?.active ?? false }));
 }
 
+// The headers the active profile currently injects, deduplicated the way DNR
+// does (case-insensitive names; manual headers win over source rows).
 function activeHeaders(state) {
   if (!state.masterEnabled) return [];
   const prof = activeProfile(state);
@@ -283,40 +400,103 @@ function activeHeaders(state) {
   return [...byName.values()];
 }
 
-function toRequestHeaders(state) {
-  return activeHeaders(state).map((h) => ({
-    header: h.name,
-    operation: "set",
-    value: h.value,
-  }));
+// activeHeaders, split into what the engine will accept vs reject. The popup
+// count uses `valid` — the exact list applyRules installs — so count, badge,
+// and engine can't disagree even when a source served an invalid name.
+export function partitionActiveHeaders(state) {
+  const valid = [];
+  const invalid = [];
+  for (const h of activeHeaders(state)) {
+    const err = headerNameError(h.name) || headerValueError(h.value);
+    if (err) invalid.push({ name: h.name, error: err });
+    else valid.push(h);
+  }
+  return { valid, invalid };
 }
 
+// Rebuild the dynamic DNR rule from state and record the outcome under
+// RULE_STATUS_KEY. updateDynamicRules is atomic, so this never mixes old and
+// new rules — and on any failure it fails closed (removes the old rule rather
+// than silently keeping stale headers flowing) and reports why.
 export async function applyRules(state) {
-  const existing = await browser.declarativeNetRequest.getDynamicRules();
-  const removeRuleIds = existing.map((r) => r.id);
-  const requestHeaders = toRequestHeaders(state);
+  const { valid, invalid } = partitionActiveHeaders(state);
+  const status = {
+    ok: true,
+    applied: 0,
+    skipped: invalid,
+    error: null,
+    at: new Date().toISOString(),
+  };
+  const regexFilter = activeProfile(state).urlRegex?.trim() || DEFAULT_URL_REGEX;
 
-  const addRules =
-    requestHeaders.length === 0
-      ? []
-      : [
-          {
-            id: 1,
-            priority: 1,
-            action: { type: "modifyHeaders", requestHeaders },
-            condition: {
-              regexFilter: activeProfile(state).urlRegex?.trim() || DEFAULT_URL_REGEX,
-              resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "other"],
-            },
-          },
-        ];
+  let removeRuleIds = [];
+  try {
+    const regexErr = await urlRegexError(regexFilter);
+    removeRuleIds = (await browser.declarativeNetRequest.getDynamicRules()).map((r) => r.id);
+    if (regexErr) {
+      await browser.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules: [] });
+      status.ok = false;
+      status.error = `URL pattern rejected: ${regexErr}`;
+    } else {
+      const addRules =
+        valid.length === 0
+          ? []
+          : [
+              {
+                id: 1,
+                priority: 1,
+                action: {
+                  type: "modifyHeaders",
+                  requestHeaders: valid.map((h) => ({
+                    header: h.name,
+                    operation: "set",
+                    value: h.value,
+                  })),
+                },
+                condition: {
+                  regexFilter,
+                  resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "other"],
+                },
+              },
+            ];
+      await browser.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
+      status.applied = valid.length;
+      if (status.skipped.length) {
+        status.ok = false;
+        status.error = `${status.skipped.length} invalid header(s) skipped: ${status.skipped
+          .map((s) => s.name)
+          .join(", ")}`;
+      }
+    }
+  } catch (err) {
+    status.ok = false;
+    status.error = err?.message || String(err);
+    // The atomic update was rejected as a whole — clear whatever is installed
+    // so a red status never coexists with silently-still-active old rules.
+    // Re-fetch the ids: the original failure may have been getDynamicRules
+    // itself, leaving removeRuleIds empty.
+    try {
+      const ids = (await browser.declarativeNetRequest.getDynamicRules()).map((r) => r.id);
+      await browser.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: ids,
+        addRules: [],
+      });
+      status.applied = 0;
+    } catch {
+      // Even the removal failed — nothing more we can do beyond reporting.
+    }
+  }
 
-  await browser.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
-  await updateBadge(requestHeaders.length, state.accent);
+  await updateBadge(status, state.accent);
+  await browser.storage.local.set({ [RULE_STATUS_KEY]: status });
+  return status;
 }
 
-async function updateBadge(count, accent) {
+async function updateBadge(status, accent) {
   const acc = ACCENTS[accent] ?? ACCENTS[DEFAULT_ACCENT];
-  await browser.action.setBadgeText({ text: count > 0 ? String(count) : "" });
-  await browser.action.setBadgeBackgroundColor({ color: acc.base });
+  const failed = !status.ok && status.applied === 0 && Boolean(status.error);
+  await browser.action.setBadgeText({
+    text: failed ? "!" : status.applied > 0 ? String(status.applied) : "",
+  });
+  await browser.action.setBadgeBackgroundColor({ color: failed ? "#c0453b" : acc.base });
 }

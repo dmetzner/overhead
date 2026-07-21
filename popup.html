@@ -49,6 +49,9 @@
       </label>
     </header>
 
+    <!-- One always-visible surface for save/rule failures, whatever pane is open. -->
+    <p id="globalErr" class="globalerr hidden" role="alert"></p>
+
     <div class="profilebar">
       <select id="profileSelect" title="Active profile" aria-label="Active profile"></select>
       <input type="text" id="profRenameInput" class="rename hidden" spellcheck="false" aria-label="Rename profile" />
@@ -81,7 +84,7 @@
         spellcheck="false"
         autocomplete="off"
       />
-      <p class="regexerr hidden" id="urlRegexErr"></p>
+      <p class="regexerr hidden" id="urlRegexErr" role="alert"></p>
     </section>
 
     <!-- ENDPOINT TAB -->
@@ -123,7 +126,7 @@
         </button>
       </section>
 
-      <p class="status" id="status"></p>
+      <p class="status" id="status" role="status"></p>
 
       <section class="catalogsearch">
         <input type="text" id="flagFilter" placeholder="Filter headers…" spellcheck="false" />
@@ -163,18 +166,28 @@
           type="text"
           id="newName"
           placeholder="header name"
+          aria-label="Header name"
           list="stdHeaders"
           autocomplete="off"
           spellcheck="false"
         />
         <datalist id="stdHeaders"></datalist>
-        <input type="text" id="newValue" class="value" placeholder="value" autocomplete="off" spellcheck="false" />
-        <button type="submit" title="Add header">+</button>
+        <input
+          type="text"
+          id="newValue"
+          class="value"
+          placeholder="value"
+          aria-label="Header value"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="submit" title="Add header" aria-label="Add header">+</button>
       </form>
+      <p class="regexerr formerr hidden" id="formErr" role="alert"></p>
 
       <footer class="hint">Any request header, sent as-is.</footer>
     </div>
 
-    <script type="module" src="popup.js"></script>
+    <script type="module" src="popup/app.js"></script>
   </body>
 </html>

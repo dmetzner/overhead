@@ -2,6 +2,39 @@
 
 All notable changes to Overhead. Versions match `manifest.json` / release tags.
 
+## 2.4.0
+
+Trust release — every finding of the 2026-07 external audit fixed.
+
+- **Fixed catalog corruption on profile duplication:** duplicated sources now get
+  fresh ids (catalogs are stored globally by source id, so copies used to
+  overwrite each other); already-duplicated ids are split by a migration.
+- **No more silent rule failures:** header names/values and URL patterns are
+  validated centrally against what the engine accepts (RE2 via
+  `isRegexSupported`, RFC 9110 tokens, no control chars — manual entry, inline
+  edits, and imports included). `updateDynamicRules` failures fail *closed*
+  (stale rules removed), are retried, and surface in a popup banner + a `!`
+  badge instead of pretending to be active.
+- **No stale header injection:** editing a source URL clears its catalog;
+  a failed refresh flags kept rows as stale and counts as a failure.
+- **Robust persistence:** saves are queued (no interleaved writes), `storage.sync`
+  is written before catalogs, and every save failure lands on one global banner.
+- **Refresh can't hang:** endpoint fetches time out after 10 s and the button is
+  disabled while a refresh runs.
+- **Share format v2:** endpoint selections travel with the link, so a
+  source-driven profile round-trips as a working setup (plain shares still
+  encode as v1 for older installs). The `/i` preview shows them and no longer
+  blanks on malformed fragments — and is now covered by a real parity test that
+  executes the page's script.
+- **Site honesty:** the landing page now scopes the no-telemetry claim to the
+  extension and discloses the site's cookieless GoatCounter analytics.
+- **A11y:** Escape closes Settings with focus restore, arrow keys move between
+  tabs, unlabeled fields/delete buttons got names, statuses are live regions,
+  small controls have ≥24 px hit areas.
+- **Release safety:** CI also runs on tags; the Firefox signing workflow checks
+  tag↔manifest consistency and runs lint+tests before signing anything.
+- `popup.js` (736 lines) split into focused ES modules under `popup/`.
+
 ## 2.3.0
 - **Fixed silent data loss:** fetched catalogs now live in `storage.local`, so the
   synced config stays under the ~8 KB `storage.sync` per-item cap; saves report

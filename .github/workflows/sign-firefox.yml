@@ -40,12 +40,28 @@ jobs:
         id: manifest
         run: echo "version=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
 
+      # Same gate as pack.yml: a mismatched tag must not produce a signed XPI.
+      - name: Verify tag matches manifest version
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [ "${TAG#v}" != "${{ steps.manifest.outputs.version }}" ]; then
+            echo "::error::tag $TAG does not match manifest.json version ${{ steps.manifest.outputs.version }}"
+            exit 1
+          fi
+
+      # And the CI gate: never sign what the suite hasn't passed.
+      - name: Lint + tests
+        run: |
+          npx --yes @biomejs/biome@2.5.1 ci .
+          node --test
+
       # web-ext lints and packs from a clean dir, so stage only the runtime files
       # (same set the pack workflow ships) — no README, .git, workflows, examples.
       - name: Stage extension files
         run: |
           mkdir -p dist
-          cp -r manifest.json sw.js rules.js standard-headers.js popup.html popup.js popup.css icons dist/
+          cp -r manifest.json sw.js rules.js standard-headers.js popup.html popup popup.css icons dist/
           # Firefox has no service_worker background (bug 1573659) — it uses an
           # event page via background.scripts. The committed manifest is
           # Chrome-canonical (service_worker only, no Chrome warning); swap in

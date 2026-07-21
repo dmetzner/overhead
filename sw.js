@@ -13,8 +13,12 @@ async function sync() {
   // theme/accent or active-tab edit).
   const sig = injectionSig(state);
   if (sig === lastSig) return;
-  lastSig = sig;
-  await applyRules(state);
+  // Record the signature only once the engine accepted the rule. On failure,
+  // *invalidate* it: applyRules fails closed (rules removed), so even the
+  // previous signature no longer describes what's installed — reverting to the
+  // last-known-good state must re-apply, not early-return.
+  const status = await applyRules(state);
+  lastSig = status.ok ? sig : null;
 }
 
 browser.runtime.onInstalled.addListener(sync);
