@@ -76,11 +76,14 @@ editing those, and add an accent by extending the `ACCENTS` map in `rules.js`.
 
 ## Install
 
-Grab the latest `overhead-v*.zip` from the [Releases](../../releases) page
-and unzip it (or `git clone` this repo) — the same folder installs on either
-browser.
+Each release ships two zips — the only difference is the `background` key
+(Chrome needs a `service_worker`, Firefox an event-page `scripts` entry; see
+[How it works](#how-it-works)). Grab the one for your browser from the
+[Releases](../../releases) page. For Chrome dev you can also just `git clone`
+and load the repo folder directly — the committed `manifest.json` is the Chrome
+form.
 
-**Chrome / Chromium:**
+**Chrome / Chromium** (`overhead-chrome-v*.zip`, or the cloned repo folder):
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top right).
@@ -90,11 +93,14 @@ browser.
 **Firefox (temporary, for development):**
 
 Firefox only runs unsigned add-ons as *temporary* installs — they're removed
-when Firefox restarts, so reload after each restart.
+when Firefox restarts, so reload after each restart. Use the **Firefox** zip
+(`overhead-firefox-v*.zip`) — the repo's own `manifest.json` is Chrome-only and
+won't start a background page on Firefox.
 
-1. Open `about:debugging#/runtime/this-firefox`.
-2. Click **Load Temporary Add-on…** and pick `manifest.json` inside the folder.
-3. The first time you toggle a header on, Firefox may prompt for the
+1. Unzip `overhead-firefox-v*.zip`.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on…** and pick `manifest.json` inside the unzipped folder.
+4. The first time you toggle a header on, Firefox may prompt for the
    `<all_urls>` permission (needed to modify requests) — allow it, or grant it
    up front via the add-on's **Permissions** tab in `about:addons`.
 
@@ -114,8 +120,9 @@ Pushing a tag `vX.Y.Z` (matching `manifest.json`) cuts a GitHub Release and runs
 two workflows against it:
 
 - [Pack extension](.github/workflows/pack.yml) — builds and attaches the
-  unpacked `overhead-v*.zip` (Chrome/Firefox dev installs). Can also be run
-  manually to get the zip as a build artifact without a release.
+  per-browser `overhead-chrome-v*.zip` and `overhead-firefox-v*.zip` (dev
+  installs). Can also be run manually to get the zips as build artifacts
+  without a release.
 - [Sign Firefox add-on](.github/workflows/sign-firefox.yml) — signs the add-on
   as an unlisted `.xpi` via Mozilla's AMO API and attaches it to the release.
   It authenticates with the `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` repo secrets
@@ -132,11 +139,17 @@ whenever state changes.
 
 The same source runs on both browsers: every API call goes through
 `globalThis.browser ?? globalThis.chrome`, picking the promise-based
-WebExtension namespace on whichever browser is running it. `manifest.json`
-declares the background script under both `service_worker` (what Chromium
-reads) and `scripts` (what Firefox reads, as a non-persistent background page)
-— each browser ignores the key it doesn't understand. `browser_specific_settings.gecko.id`
-is set because Firefox requires an explicit add-on ID for `storage.sync` to work.
+WebExtension namespace on whichever browser is running it.
+
+The one place they diverge is the background declaration. Chrome (MV3) wants a
+`background.service_worker`; Firefox has no service-worker background
+([bug 1573659](https://bugzil.la/1573659)) and uses an event page via
+`background.scripts`. Declaring both in one manifest makes each browser warn
+about the other's key, so instead the committed `manifest.json` is the Chrome
+form and the release build rewrites `background` to the `scripts` form for the
+Firefox zip/`.xpi` (a one-line `jq` step in each workflow) — same `sw.js`, no
+warnings either way. `browser_specific_settings.gecko.id` is set because Firefox
+requires an explicit add-on ID for `storage.sync` to work.
 
 File imports have one real browser difference: Firefox closes the popup the
 moment its native file dialog opens, before the picked file's `change` event

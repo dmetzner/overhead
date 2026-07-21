@@ -46,6 +46,11 @@ jobs:
         run: |
           mkdir -p dist
           cp -r manifest.json sw.js rules.js popup.html popup.js popup.css icons dist/
+          # Firefox has no service_worker background (bug 1573659) — it uses an
+          # event page via background.scripts. The committed manifest is
+          # Chrome-canonical (service_worker only, no Chrome warning); swap in
+          # the scripts form here so the signed .xpi is warning-free on Firefox.
+          jq '.background = {"scripts": ["sw.js"], "type": "module"}' manifest.json > dist/manifest.json
 
       - name: Sign (unlisted) via AMO
         run: |

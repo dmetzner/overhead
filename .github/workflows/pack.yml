@@ -18,20 +18,31 @@ jobs:
         id: manifest
         run: echo "version=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Build zip
+      # Two builds: the committed manifest is Chrome-canonical (background.service_worker).
+      # Firefox has no service_worker support (bug 1573659) and uses an event page, so the
+      # Firefox build swaps background to the scripts form — each browser loads warning-free.
+      - name: Build zips
+        env:
+          V: ${{ steps.manifest.outputs.version }}
         run: |
-          zip -r "overhead-v${{ steps.manifest.outputs.version }}.zip" \
-            manifest.json sw.js rules.js popup.html popup.js popup.css icons \
-            -x "*.DS_Store"
+          shared="sw.js rules.js popup.html popup.js popup.css icons"
 
-      - name: Upload artifact
+          # Chrome — manifest as committed
+          zip -r "overhead-chrome-v${V}.zip" manifest.json $shared -x "*.DS_Store"
+
+          # Firefox — inject background.scripts (drop service_worker)
+          mkdir -p ff && cp -r $shared ff/
+          jq '.background = {"scripts": ["sw.js"], "type": "module"}' manifest.json > ff/manifest.json
+          (cd ff && zip -r "../overhead-firefox-v${V}.zip" . -x "*.DS_Store")
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: overhead-v${{ steps.manifest.outputs.version }}
-          path: overhead-v${{ steps.manifest.outputs.version }}.zip
+          path: overhead-*-v${{ steps.manifest.outputs.version }}.zip
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: overhead-v${{ steps.manifest.outputs.version }}.zip
+          files: overhead-*-v${{ steps.manifest.outputs.version }}.zip
