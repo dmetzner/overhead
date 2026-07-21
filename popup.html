@@ -4,12 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="popup.css" />
-    <title>NiceHeader</title>
+    <title>Overhead</title>
   </head>
   <body>
     <header class="topbar">
-      <span class="brand">NiceHeader</span>
+      <span class="brand">Overhead</span>
       <span class="count" id="count"></span>
+      <div class="settings">
+        <button
+          class="gear"
+          id="settingsBtn"
+          type="button"
+          title="Theme &amp; accent"
+          aria-expanded="false"
+          aria-controls="settingsPopover"
+        >
+          ⚙
+        </button>
+        <div class="popover hidden" id="settingsPopover" role="dialog" aria-label="Appearance">
+          <h3>Theme</h3>
+          <div class="segmented" id="themeSeg" role="group" aria-label="Theme">
+            <button type="button" data-theme="system" aria-pressed="false">System</button>
+            <button type="button" data-theme="light" aria-pressed="false">Light</button>
+            <button type="button" data-theme="dark" aria-pressed="false">Dark</button>
+          </div>
+          <h3>Accent</h3>
+          <div class="swatches" id="accentSwatches" role="group" aria-label="Accent color"></div>
+        </div>
+      </div>
       <label class="switch" title="Toggle all headers">
         <input type="checkbox" id="master" />
         <span class="slider"></span>
@@ -62,7 +84,7 @@
           type="text"
           id="newSourceUrl"
           class="mono"
-          placeholder="https://example.com/api/feature-flags"
+          placeholder="https://example.com/api/headers"
           spellcheck="false"
           autocomplete="off"
         />

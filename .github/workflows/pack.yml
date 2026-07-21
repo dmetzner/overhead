@@ -20,18 +20,18 @@ jobs:
 
       - name: Build zip
         run: |
-          zip -r "nice-header-v${{ steps.manifest.outputs.version }}.zip" \
+          zip -r "overhead-v${{ steps.manifest.outputs.version }}.zip" \
             manifest.json sw.js rules.js popup.html popup.js popup.css icons \
             -x "*.DS_Store"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nice-header-v${{ steps.manifest.outputs.version }}
-          path: nice-header-v${{ steps.manifest.outputs.version }}.zip
+          name: overhead-v${{ steps.manifest.outputs.version }}
+          path: overhead-v${{ steps.manifest.outputs.version }}.zip
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: nice-header-v${{ steps.manifest.outputs.version }}.zip
+          files: overhead-v${{ steps.manifest.outputs.version }}.zip

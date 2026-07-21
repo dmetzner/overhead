@@ -1,12 +1,12 @@
-# NiceHeader
+# Overhead
 
 A tiny browser extension (Manifest V3, Chrome + Firefox) that injects
-**arbitrary request headers** into outgoing requests — with a fast path for
-feature-flag headers pulled from a JSON source (see below), but works for any
-header.
+**arbitrary request headers** into outgoing requests. Type them by hand, or pull
+a known set from any JSON source (a dev backend, a local file) — either way they
+arrive verbatim.
 
 Toggle each header on/off, scope them to a URL regex. Multiple headers active
-at once, one click each. No ads, no bloat.
+at once, one click each. Light/dark theme and a pickable accent. No ads, no bloat.
 
 Two ways to pick headers:
 
@@ -64,9 +64,19 @@ multiple hosts: `(shop|admin)\.example\.dev`. Empty or `.*` = everything. An
 invalid pattern is flagged inline and never applied, so a typo can't silently
 disable header injection.
 
+## Theming
+
+The gear in the top bar opens appearance settings: **theme** (System / Light /
+Dark) and an **accent** swatch (indigo, blue, teal, green, amber, rose). System
+follows your OS light/dark preference; the accent recolors the UI and the
+toolbar badge. Both persist in `storage.sync`, so they follow you across
+browsers signed into the same profile. Palettes are plain CSS custom properties
+in `popup.css` (`--bg`, `--panel`, `--accent`, …) — add or retint a theme by
+editing those, and add an accent by extending the `ACCENTS` map in `rules.js`.
+
 ## Install
 
-Grab the latest `nice-header-v*.zip` from the [Releases](../../releases) page
+Grab the latest `overhead-v*.zip` from the [Releases](../../releases) page
 and unzip it (or `git clone` this repo) — the same folder installs on either
 browser.
 
@@ -75,7 +85,7 @@ browser.
 1. Open `chrome://extensions`.
 2. Enable **Developer mode** (top right).
 3. **Load unpacked** → select the folder.
-4. Pin the NiceHeader icon; the badge shows how many headers are active.
+4. Pin the Overhead icon; the badge shows how many headers are active.
 
 **Firefox (temporary, for development):**
 
@@ -104,7 +114,7 @@ Pushing a tag `vX.Y.Z` (matching `manifest.json`) cuts a GitHub Release and runs
 two workflows against it:
 
 - [Pack extension](.github/workflows/pack.yml) — builds and attaches the
-  unpacked `nice-header-v*.zip` (Chrome/Firefox dev installs). Can also be run
+  unpacked `overhead-v*.zip` (Chrome/Firefox dev installs). Can also be run
   manually to get the zip as a build artifact without a release.
 - [Sign Firefox add-on](.github/workflows/sign-firefox.yml) — signs the add-on
   as an unlisted `.xpi` via Mozilla's AMO API and attaches it to the release.

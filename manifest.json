@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "NiceHeader",
+  "name": "Overhead",
   "version": "1.1.0",
-  "description": "Inject arbitrary request headers per request, with a fast path for dev feature flags.",
+  "description": "Inject arbitrary request headers per request — toggleable, URL-scoped, with optional JSON header catalogs.",
   "permissions": ["declarativeNetRequest", "storage"],
   "host_permissions": ["<all_urls>"],
   "background": {
@@ -12,7 +12,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "NiceHeader"
+    "default_title": "Overhead"
   },
   "icons": {
     "16": "icons/icon16.png",
@@ -21,7 +21,7 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "nice-header@niceshops.com",
+      "id": "overhead@metzner.uk",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": ["none"]

@@ -1,14 +1,41 @@
+/* Dark is the default palette. --accent / --accent-hi are set at runtime from
+   the chosen preset (popup.js), these are the first-paint fallback. */
 :root {
+  color-scheme: dark;
   --bg: #1e1f22;
   --panel: #2b2d31;
   --line: #3a3d43;
   --text: #e6e7ea;
   --muted: #9a9ea6;
-  --accent: #F39200;
-  --accent-hi: #ffa726;
+  --code-bg: #141517;
+  --accent: #6366f1;
+  --accent-hi: #818cf8;
   --danger: #c0453b;
   --ok: #3fb27f;
   --warn: #d9a441;
+}
+
+/* Light palette: forced via data-theme="light", or by system preference when
+   the user hasn't forced dark. Accent vars are theme-independent. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --panel: #f2f3f5;
+  --line: #d9dbe0;
+  --text: #1e1f22;
+  --muted: #6b7078;
+  --code-bg: #f6f7f9;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --panel: #f2f3f5;
+    --line: #d9dbe0;
+    --text: #1e1f22;
+    --muted: #6b7078;
+    --code-bg: #f6f7f9;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -41,6 +68,74 @@ body.tabview { margin: 24px auto; }
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+
+/* settings (theme + accent) */
+.settings { position: relative; flex: 0 0 auto; }
+.gear {
+  width: 26px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+.gear:hover,
+.gear[aria-expanded="true"] { color: var(--accent); border-color: var(--line); }
+.popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  width: 208px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.popover h3 {
+  margin: 0 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+.popover h3:not(:first-child) { margin-top: 12px; }
+.segmented { display: flex; gap: 4px; }
+.segmented button {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 5px 0;
+}
+.segmented button[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+}
+.swatch[aria-pressed="true"] { border-color: var(--text); }
+.swatch:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
 
 /* tabs */
 .tabs {
@@ -306,13 +401,13 @@ input[type="text"].bad:focus { border-color: var(--danger); }
 }
 .schema pre {
   margin: 10px 0 0;
-  background: #141517;
+  background: var(--code-bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 11.5px;
   line-height: 1.55;
-  color: #c7c4d4;
+  color: var(--text);
   overflow-x: auto;
 }
 .s-key { color: var(--accent-hi); }

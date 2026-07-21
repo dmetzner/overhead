@@ -1,4 +1,13 @@
-import { loadState, saveState, fetchCatalog, normalizeCatalog, mergeCatalog, newSource } from "./rules.js";
+import {
+  loadState,
+  saveState,
+  fetchCatalog,
+  normalizeCatalog,
+  mergeCatalog,
+  newSource,
+  ACCENTS,
+  DEFAULT_ACCENT
+} from "./rules.js";
 
 const api = globalThis.browser ?? globalThis.chrome;
 
@@ -32,7 +41,12 @@ const els = {
   empty: document.getElementById("empty"),
   form: document.getElementById("addForm"),
   newName: document.getElementById("newName"),
-  newValue: document.getElementById("newValue")
+  newValue: document.getElementById("newValue"),
+  // appearance
+  settingsBtn: document.getElementById("settingsBtn"),
+  settingsPopover: document.getElementById("settingsPopover"),
+  themeSeg: document.getElementById("themeSeg"),
+  accentSwatches: document.getElementById("accentSwatches")
 };
 
 let state;
@@ -341,6 +355,71 @@ function wireInfo(btn, help) {
 wireInfo(els.urlRegexInfo, els.urlRegexHelp);
 wireInfo(els.endpointInfo, els.endpointHelp);
 
+/* ---------- appearance (theme + accent) ---------- */
+
+// Push the chosen theme/accent onto the document. Theme drives the palette via
+// a data-theme attribute (absent = follow the OS); accent overrides the CSS
+// custom properties inline so it wins over the stylesheet fallback.
+function applyAppearance() {
+  const root = document.documentElement;
+  if (state.theme === "system") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", state.theme);
+  const acc = ACCENTS[state.accent] ?? ACCENTS[DEFAULT_ACCENT];
+  root.style.setProperty("--accent", acc.base);
+  root.style.setProperty("--accent-hi", acc.hi);
+}
+
+function buildSwatches() {
+  els.accentSwatches.innerHTML = "";
+  for (const [key, { base }] of Object.entries(ACCENTS)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "swatch";
+    b.dataset.accent = key;
+    b.title = key;
+    b.style.background = base;
+    b.setAttribute("aria-label", key);
+    b.addEventListener("click", () => {
+      state.accent = key;
+      applyAppearance();
+      renderAppearance();
+      persist();
+    });
+    els.accentSwatches.append(b);
+  }
+}
+
+function renderAppearance() {
+  els.themeSeg.querySelectorAll("button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.theme === state.theme))
+  );
+  els.accentSwatches.querySelectorAll(".swatch").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.accent === state.accent))
+  );
+}
+
+els.themeSeg.querySelectorAll("button").forEach((b) =>
+  b.addEventListener("click", () => {
+    state.theme = b.dataset.theme;
+    applyAppearance();
+    renderAppearance();
+    persist();
+  })
+);
+
+els.settingsBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const hidden = els.settingsPopover.classList.toggle("hidden");
+  els.settingsBtn.setAttribute("aria-expanded", String(!hidden));
+});
+// Click outside closes the popover.
+document.addEventListener("click", (e) => {
+  if (els.settingsPopover.classList.contains("hidden")) return;
+  if (els.settingsPopover.contains(e.target) || els.settingsBtn.contains(e.target)) return;
+  els.settingsPopover.classList.add("hidden");
+  els.settingsBtn.setAttribute("aria-expanded", "false");
+});
+
 /* ---------- events ---------- */
 
 els.tabs.forEach((t) =>
@@ -425,6 +504,9 @@ els.form.addEventListener("submit", (e) => {
 
 (async () => {
   state = await loadState();
+  applyAppearance();
+  buildSwatches();
+  renderAppearance();
   if (IN_TAB) {
     document.body.classList.add("tabview");
     state.activeTab = "endpoint"; // the tab is only opened for file imports, which live here
