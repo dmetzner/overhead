@@ -137,6 +137,41 @@ body.tabview { margin: 24px auto; }
 .swatch[aria-pressed="true"] { border-color: var(--text); }
 .swatch:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
 
+/* config share / import */
+.cfgrow { display: flex; gap: 6px; }
+.cfgbtn {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 8px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.cfgbtn:hover { border-color: var(--accent); color: var(--accent); }
+.cfgbtn.wide { width: 100%; flex: none; margin-top: 6px; }
+.importbox { margin-top: 8px; }
+.importbox textarea {
+  width: 100%;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  padding: 6px 8px;
+  outline: none;
+}
+.importbox textarea:focus { border-color: var(--accent-hi); }
+.cfgstatus { margin-top: 6px; font-size: 10.5px; color: var(--muted); min-height: 12px; }
+.cfgstatus.ok { color: var(--ok); }
+.cfgstatus.error { color: var(--danger); }
+
 /* tabs */
 .tabs {
   display: flex;

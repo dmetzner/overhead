@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070708" />
+
+    <link rel="preload" href="/fonts/jetbrains-mono-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070708'/%3E%3Cg fill='%232ee6e6'%3E%3Crect x='14' y='16' width='36' height='10' rx='5'/%3E%3Crect x='14' y='33' width='36' height='6' rx='3' opacity='0.8'/%3E%3Crect x='14' y='44' width='22' height='6' rx='3' opacity='0.5'/%3E%3C/g%3E%3C/svg%3E"
+    />
+
+    <title>Overhead — inject any request header</title>
+    <meta
+      name="description"
+      content="Overhead is a tiny Chrome & Firefox extension that injects the request headers you choose — toggle them per URL, pull a known set from JSON, or type them by hand. Local-only, open source, no ads."
+    />
+    <link rel="canonical" href="https://overhead.metzner.uk/" />
+    <meta property="og:site_name" content="Overhead" />
+    <meta property="og:title" content="Overhead — inject any request header" />
+    <meta
+      property="og:description"
+      content="A tiny Chrome & Firefox extension that injects request headers. Toggle per URL, pull from JSON, or type by hand. Local-only, no ads."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://overhead.metzner.uk/" />
+    <meta name="twitter:card" content="summary" />
+
+    <style>
+      @font-face {
+        font-family: "JetBrains Mono";
+        src: url("/fonts/jetbrains-mono-400-latin.woff2") format("woff2");
+        font-weight: 400;
+        font-display: swap;
+      }
+
+      :root {
+        --bg: #070708;
+        --panel: #101015;
+        --panel-2: #15151c;
+        --line: #23232d;
+        --text: #ececf0;
+        --faint: #8a8a95;
+        --cyan: #2ee6e6;
+        --violet: #b06bff;
+        --grad: linear-gradient(115deg, var(--cyan), var(--violet));
+        --maxw: 1040px;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 15px;
+        line-height: 1.62;
+        -webkit-font-smoothing: antialiased;
+        background-image:
+          radial-gradient(circle at 18% 8%, rgba(46, 230, 230, 0.10), transparent 42%),
+          radial-gradient(circle at 88% 2%, rgba(176, 107, 255, 0.12), transparent 46%),
+          radial-gradient(circle at 50% 120%, rgba(176, 107, 255, 0.06), transparent 55%);
+        background-attachment: fixed;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+        background-size: 26px 26px;
+        mask-image: radial-gradient(ellipse 80% 70% at 50% 20%, #000 40%, transparent 85%);
+      }
+      .wrap { position: relative; z-index: 1; }
+      a { color: inherit; }
+
+      .shell { max-width: var(--maxw); margin: 0 auto; padding: 0 clamp(1.1rem, 4vw, 2.2rem); }
+
+      /* ── top bar ── */
+      header.bar { display: flex; align-items: center; gap: 1rem; padding: 1.3rem 0; }
+      .brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 700; letter-spacing: 0.01em; }
+      .brand svg { width: 24px; height: 24px; display: block; border-radius: 6px; }
+      .bar nav { margin-left: auto; display: flex; gap: 1.5rem; font-size: 0.8rem; }
+      .bar nav a { color: var(--faint); text-decoration: none; transition: color 0.18s; }
+      .bar nav a:hover { color: var(--cyan); }
+      @media (max-width: 560px) { .bar nav a.opt { display: none; } }
+
+      /* ── hero ── */
+      .hero { padding: clamp(1.8rem, 5vw, 3.2rem) 0 clamp(1.2rem, 3vw, 2rem); }
+      .apphead { display: flex; align-items: center; gap: clamp(1rem, 3vw, 1.6rem); }
+      .appicon { width: clamp(62px, 12vw, 84px); height: clamp(62px, 12vw, 84px); border-radius: 20px; flex: none; box-shadow: 0 12px 34px -12px rgba(176, 107, 255, 0.5); }
+      .appicon svg { width: 100%; height: 100%; display: block; }
+      .appmeta h1 { font-size: clamp(1.9rem, 5.5vw, 2.9rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+      .appmeta .tag { margin-top: 0.5rem; color: var(--text); font-size: clamp(0.9rem, 2.4vw, 1.08rem); }
+      .appmeta .tag .g { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+      .chips { margin-top: 1.4rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+      .chip { font-size: 0.72rem; letter-spacing: 0.04em; color: var(--faint); border: 1px solid var(--line); border-radius: 999px; padding: 0.28rem 0.7rem; }
+      .chip.free { color: var(--cyan); border-color: color-mix(in srgb, var(--cyan) 45%, var(--line)); }
+
+      .cta { margin-top: 1.5rem; display: flex; gap: 0.8rem; flex-wrap: wrap; }
+      .btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.7rem 1.2rem; border-radius: 10px; text-decoration: none; font-size: 0.85rem; border: 1px solid var(--line); transition: border-color 0.18s, color 0.18s, transform 0.18s; }
+      .btn.primary { color: #08080a; background: var(--grad); border-color: transparent; font-weight: 700; }
+      .btn.primary:hover { transform: translateY(-2px); }
+      .btn.ghost:hover { border-color: var(--cyan); color: var(--cyan); }
+      .btn svg { width: 16px; height: 16px; }
+
+      /* ── why line (under CTA, above screenshots) ── */
+      .whyline { margin-top: clamp(1.8rem, 4vw, 2.4rem); padding-top: clamp(1.4rem, 3vw, 1.8rem); border-top: 1px solid var(--line); }
+      .whyline p { max-width: 60ch; font-size: clamp(0.9rem, 2.2vw, 1.02rem); }
+      .whyline p .g { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .stats { margin-top: 1.3rem; display: flex; gap: clamp(1.6rem, 4vw, 2.4rem); flex-wrap: wrap; }
+      .stats div { display: flex; flex-direction: column; }
+      .stats b { font-size: 1.5rem; font-weight: 700; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .stats span { font-size: 0.66rem; color: var(--faint); letter-spacing: 0.1em; }
+
+      /* ── screenshot filmstrip ── */
+      .strip { margin-top: clamp(1.8rem, 4vw, 2.6rem); display: flex; gap: 1.1rem; overflow-x: auto; padding: 0.5rem 0 1.4rem; scroll-snap-type: x mandatory; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+      .strip::-webkit-scrollbar { height: 7px; }
+      .strip::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+      figure.shot { scroll-snap-align: center; flex: 0 0 auto; margin: 0; }
+      figure.shot .frame {
+        height: clamp(300px, 46vw, 384px);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--panel);
+        padding: 8px;
+        box-shadow: 0 26px 60px -30px rgba(0, 0, 0, 0.95);
+        display: flex;
+      }
+      figure.shot img { height: 100%; width: auto; border-radius: 9px; display: block; }
+      figure.shot figcaption { margin-top: 0.7rem; font-size: 0.76rem; color: var(--faint); max-width: 30ch; line-height: 1.5; }
+      figure.shot figcaption b { color: var(--text); font-weight: 400; }
+
+      /* ── section frame ── */
+      section.blk { padding: clamp(2.4rem, 6vw, 3.8rem) 0; }
+      .kick { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 1.9rem; }
+      .kick::before { content: ""; width: 22px; height: 2px; border-radius: 2px; background: var(--grad); }
+      .kick h2 { font-size: 0.82rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--faint); }
+
+      /* ── features: airy two-column list ── */
+      .flist { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem 2.6rem; }
+      @media (max-width: 620px) { .flist { grid-template-columns: 1fr; gap: 1.3rem; } }
+      .flist li { display: flex; gap: 0.8rem; align-items: flex-start; }
+      .flist .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--grad); margin-top: 0.5rem; flex: none; }
+      .flist h3 { font-size: 0.92rem; font-weight: 700; margin-bottom: 0.25rem; }
+      .flist p { color: var(--faint); font-size: 0.82rem; line-height: 1.6; }
+      .flist code { color: var(--text); }
+
+      /* ── install ── */
+      .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; }
+      @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+      .card2 { border: 1px solid var(--line); border-radius: 12px; padding: 1.4rem 1.4rem 1.5rem; background: var(--panel-2); }
+      .card2 h3 { font-size: 0.98rem; margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.55rem; font-weight: 700; }
+      .card2 ol { list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 0.65rem; }
+      .card2 li { counter-increment: s; position: relative; padding-left: 1.9rem; color: var(--faint); font-size: 0.83rem; }
+      .card2 li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 1.35rem; height: 1.35rem; border: 1px solid var(--line); border-radius: 6px; display: grid; place-content: center; font-size: 0.7rem; color: var(--cyan); }
+      .card2 li b { color: var(--text); font-weight: 400; }
+      .card2 code { color: var(--text); background: var(--panel); padding: 0.05rem 0.35rem; border-radius: 4px; }
+      .card2 a { color: var(--cyan); text-decoration: none; border-bottom: 1px solid transparent; }
+      .card2 a:hover { border-bottom-color: var(--cyan); }
+
+      /* ── footer ── */
+      footer.foot { border-top: 1px solid var(--line); margin-top: 2.4rem; padding: 2rem 0 2.6rem; }
+      footer.foot .shell { display: flex; align-items: center; gap: 1.2rem 2rem; flex-wrap: wrap; }
+      footer.foot .home { color: var(--faint); font-size: 0.79rem; }
+      footer.foot .home a { color: var(--text); text-decoration: none; border-bottom: 1px solid var(--line); }
+      footer.foot .home a:hover { border-bottom-color: var(--cyan); color: var(--cyan); }
+      footer.foot .fnav { margin-left: auto; display: flex; gap: 1.4rem; font-size: 0.79rem; }
+      footer.foot .fnav a { color: var(--faint); text-decoration: none; transition: color 0.18s; }
+      footer.foot .fnav a:hover { color: var(--cyan); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="shell">
+        <header class="bar">
+          <span class="brand">
+            <svg viewBox="0 0 64 64" aria-hidden="true">
+              <rect width="64" height="64" rx="14" fill="#101015" />
+              <rect x="14" y="16" width="36" height="10" rx="5" fill="#2ee6e6" />
+              <rect x="14" y="33" width="36" height="6" rx="3" fill="#7f9df0" />
+              <rect x="14" y="44" width="22" height="6" rx="3" fill="#b06bff" />
+            </svg>
+            <span>Overhead</span>
+          </span>
+          <nav>
+            <a class="opt" href="#screens">Screenshots</a>
+            <a class="opt" href="#features">Features</a>
+            <a href="https://github.com/dmetzner/overhead">GitHub&nbsp;↗</a>
+          </nav>
+        </header>
+
+        <!-- ── HERO ── -->
+        <section class="hero">
+          <div class="apphead">
+            <span class="appicon">
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <rect width="64" height="64" rx="20" fill="#101015" />
+                <rect x="14" y="16" width="36" height="10" rx="5" fill="#2ee6e6" />
+                <rect x="14" y="33" width="36" height="6" rx="3" fill="#7f9df0" />
+                <rect x="14" y="44" width="22" height="6" rx="3" fill="#b06bff" />
+              </svg>
+            </span>
+            <div class="appmeta">
+              <h1>Overhead</h1>
+              <p class="tag">Inject <span class="g">any request header</span> — right from your browser.</p>
+            </div>
+          </div>
+
+          <div class="chips">
+            <span class="chip">Chrome</span>
+            <span class="chip">Firefox</span>
+            <span class="chip free">Free &amp; open source</span>
+            <span class="chip">MIT</span>
+            <span class="chip">No ads</span>
+          </div>
+
+          <div class="cta">
+            <a class="btn primary" href="https://github.com/dmetzner/overhead/releases">
+              Install
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>
+            </a>
+            <a class="btn ghost" href="https://github.com/dmetzner/overhead">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5A11.5 11.5 0 0 0 8.4 22.9c.6.1.8-.2.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 5 18.3 5.3 18.3 5.3c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .4.2.7.8.6A11.5 11.5 0 0 0 12 .5Z"/></svg>
+              Source
+            </a>
+          </div>
+
+          <!-- why, right under the buttons -->
+          <div class="whyline">
+            <p>
+              No ads, no account, no telemetry —
+              <span class="g">MIT-licensed and small enough to read before you trust it.</span>
+              A header tool shouldn't nag you or watch you work.
+            </p>
+            <div class="stats">
+              <div><b>8</b><span>SOURCE FILES</span></div>
+              <div><b>0</b><span>DEPENDENCIES</span></div>
+              <div><b>0</b><span>TRACKERS</span></div>
+              <div><b>MIT</b><span>LICENSE</span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── SCREENSHOTS ── -->
+        <section id="screens" aria-label="Screenshots">
+          <div class="strip">
+            <figure class="shot">
+              <span class="frame"><img src="/shots/manual-dark.png" alt="Overhead's Manual tab in dark theme: four request headers, three toggled on and one off, scoped by a URL regex." loading="lazy" /></span>
+              <figcaption><b>Type any header.</b> Toggle each on or off, scope them to a URL.</figcaption>
+            </figure>
+            <figure class="shot">
+              <span class="frame"><img src="/shots/settings-dark.png" alt="Overhead's settings popover: theme (System/Light/Dark), six accent swatches, and Copy-share-link / Import config buttons." loading="lazy" /></span>
+              <figcaption><b>Theme it, share it.</b> Light or dark, six accents — and one-click config sharing.</figcaption>
+            </figure>
+            <figure class="shot">
+              <span class="frame"><img src="/shots/endpoint-light.png" alt="Overhead's Endpoint tab in light theme: a JSON source URL with fetched headers, each toggleable." loading="lazy" /></span>
+              <figcaption><b>Pull from a source.</b> Fetch your backend's known headers from JSON — no guessing.</figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <!-- ── FEATURES ── -->
+        <section class="blk" id="features">
+          <div class="kick"><h2>What it does</h2></div>
+          <ul class="flist">
+            <li>
+              <span class="dot"></span>
+              <div><h3>Any header, verbatim</h3><p>Type any name and value. It's sent exactly as you spell it — no prefixes, no rewriting, no magic.</p></div>
+            </li>
+            <li>
+              <span class="dot"></span>
+              <div><h3>Toggle &amp; scope</h3><p>Flip each header on or off with one click, and limit them to the hosts you're testing with a URL regex.</p></div>
+            </li>
+            <li>
+              <span class="dot"></span>
+              <div><h3>Standard-header hints</h3><p>The manual field autocompletes ~60 standard and <code>X-</code> headers and suggests a typical value.</p></div>
+            </li>
+            <li>
+              <span class="dot"></span>
+              <div><h3>Header catalogs</h3><p>Point it at a JSON endpoint or a local file and pick from your backend's known headers.</p></div>
+            </li>
+            <li>
+              <span class="dot"></span>
+              <div><h3>Shareable configs</h3><p>Copy a link that carries your headers in its fragment. A teammate previews it, then imports — no server, no export dance.</p></div>
+            </li>
+            <li>
+              <span class="dot"></span>
+              <div><h3>Themeable</h3><p>Light, dark, or follow the system — plus six accent colors. Your choice syncs across your browsers.</p></div>
+            </li>
+          </ul>
+        </section>
+
+        <!-- ── INSTALL ── -->
+        <section class="blk" id="install">
+          <div class="kick"><h2>Install</h2></div>
+          <div class="cols">
+            <div class="card2">
+              <h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2ee6e6" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.4"/><path d="M12 3v6M4.2 7.5l5.2 3M19.8 7.5l-5.2 3" stroke-linecap="round"/></svg>
+                Chrome / Chromium
+              </h3>
+              <ol>
+                <li>Download <code>overhead-chrome-v*.zip</code> from <a href="https://github.com/dmetzner/overhead/releases">Releases</a> and unzip it.</li>
+                <li>Open <code>chrome://extensions</code> and turn on <b>Developer mode</b>.</li>
+                <li>Click <b>Load unpacked</b> and pick the folder.</li>
+              </ol>
+            </div>
+            <div class="card2">
+              <h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b06bff" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M4.5 9.5c3-4 12-4 15 0" stroke-linecap="round"/></svg>
+                Firefox
+              </h3>
+              <ol>
+                <li>Grab the signed <code>.xpi</code> from <a href="https://github.com/dmetzner/overhead/releases">Releases</a>.</li>
+                <li>Drag it onto <code>about:addons</code> — it installs permanently.</li>
+                <li>Or load <code>overhead-firefox-v*.zip</code> as a temporary add-on for a quick try.</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer class="foot">
+        <div class="shell">
+          <span class="home">Part of <a href="https://metzner.uk">metzner.uk</a> — built by Daniel Metzner</span>
+          <nav class="fnav">
+            <a href="https://github.com/dmetzner/overhead">GitHub</a>
+            <a href="https://daniel.metzner.uk">Portfolio</a>
+            <a href="https://til.metzner.uk">TIL</a>
+          </nav>
+        </div>
+      </footer>
+    </div>
+
+    <!-- cookieless analytics, shared "metzner" dashboard -->
+    <script data-goatcounter="https://metzner.goatcounter.com/count" async src="/count.js"></script>
+  </body>
+</html>

@@ -6,8 +6,12 @@ import {
   mergeCatalog,
   newSource,
   ACCENTS,
-  DEFAULT_ACCENT
+  DEFAULT_ACCENT,
+  encodeConfig,
+  decodeConfig,
+  SHARE_BASE
 } from "./rules.js";
+import { STANDARD_HEADERS, HEADER_BY_NAME } from "./standard-headers.js";
 
 const api = globalThis.browser ?? globalThis.chrome;
 
@@ -42,11 +46,18 @@ const els = {
   form: document.getElementById("addForm"),
   newName: document.getElementById("newName"),
   newValue: document.getElementById("newValue"),
+  stdHeaders: document.getElementById("stdHeaders"),
   // appearance
   settingsBtn: document.getElementById("settingsBtn"),
   settingsPopover: document.getElementById("settingsPopover"),
   themeSeg: document.getElementById("themeSeg"),
-  accentSwatches: document.getElementById("accentSwatches")
+  accentSwatches: document.getElementById("accentSwatches"),
+  copyShare: document.getElementById("copyShare"),
+  importToggle: document.getElementById("importToggle"),
+  importBox: document.getElementById("importBox"),
+  importText: document.getElementById("importText"),
+  importApply: document.getElementById("importApply"),
+  cfgStatus: document.getElementById("cfgStatus")
 };
 
 let state;
@@ -283,6 +294,25 @@ function buildHeader(rawName, rawValue) {
   return { name, value: rawValue.trim(), enabled: true };
 }
 
+// Populate the <datalist> that backs the name field's autocomplete. `label`
+// surfaces the browser-controlled note (shown by Chrome next to the option).
+function buildHeaderDatalist() {
+  els.stdHeaders.innerHTML = "";
+  for (const h of STANDARD_HEADERS) {
+    const opt = document.createElement("option");
+    opt.value = h.name;
+    if (h.note) opt.label = h.note;
+    els.stdHeaders.append(opt);
+  }
+}
+
+// When the typed/picked name matches a known header, hint its typical value in
+// the (empty) value field's placeholder — non-destructive, never overwrites.
+function hintValueFor(name) {
+  const match = HEADER_BY_NAME.get(name.trim().toLowerCase());
+  els.newValue.placeholder = match?.example || "value";
+}
+
 function renderManual() {
   els.list.innerHTML = "";
   els.empty.classList.toggle("hidden", state.headers.length > 0);
@@ -420,6 +450,91 @@ document.addEventListener("click", (e) => {
   els.settingsBtn.setAttribute("aria-expanded", "false");
 });
 
+/* ---------- config share / import ---------- */
+
+function setCfgStatus(text, kind) {
+  els.cfgStatus.textContent = text || "";
+  els.cfgStatus.className = "cfgstatus" + (kind ? " " + kind : "");
+}
+
+els.copyShare.addEventListener("click", async () => {
+  const link = `${SHARE_BASE}#${encodeConfig(state)}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    setCfgStatus("Share link copied ✓", "ok");
+  } catch {
+    // clipboard blocked — surface the link so it can be copied by hand
+    els.importBox.classList.remove("hidden");
+    els.importText.value = link;
+    els.importText.select();
+    setCfgStatus("Copy the link above.", "");
+  }
+});
+
+els.importToggle.addEventListener("click", () => {
+  const hidden = els.importBox.classList.toggle("hidden");
+  els.importToggle.setAttribute("aria-expanded", String(!hidden));
+  if (!hidden) els.importText.focus();
+  setCfgStatus("", "");
+});
+
+els.importApply.addEventListener("click", () => {
+  const raw = els.importText.value.trim();
+  if (!raw) {
+    setCfgStatus("Paste a share link or code first.", "error");
+    return;
+  }
+  let cfg;
+  try {
+    cfg = decodeConfig(raw);
+  } catch (err) {
+    setCfgStatus(err.message, "error");
+    return;
+  }
+
+  let added = 0;
+  let updated = 0;
+  const byName = new Map(state.headers.map((h) => [h.name.toLowerCase(), h]));
+  for (const h of cfg.headers) {
+    const ex = byName.get(h.name.toLowerCase());
+    if (ex) {
+      ex.value = h.value;
+      ex.enabled = h.enabled;
+      updated++;
+    } else {
+      const nh = { name: h.name, value: h.value, enabled: h.enabled };
+      state.headers.push(nh);
+      byName.set(h.name.toLowerCase(), nh);
+      added++;
+    }
+  }
+
+  let srcAdded = 0;
+  const haveUrls = new Set(state.sources.filter((s) => s.kind === "url").map((s) => s.url.trim()));
+  for (const url of cfg.sources) {
+    if (!haveUrls.has(url)) {
+      const s = newSource("url");
+      s.url = url;
+      state.sources.push(s);
+      haveUrls.add(url);
+      srcAdded++;
+    }
+  }
+
+  if (cfg.urlRegex != null) state.urlRegex = cfg.urlRegex;
+
+  els.importText.value = "";
+  els.importBox.classList.add("hidden");
+  els.importToggle.setAttribute("aria-expanded", "false");
+
+  const parts = [];
+  if (added) parts.push(`${added} added`);
+  if (updated) parts.push(`${updated} updated`);
+  if (srcAdded) parts.push(`${srcAdded} source${srcAdded > 1 ? "s" : ""}`);
+  setCfgStatus(`Imported ${parts.join(", ") || "— no changes"} ✓`, "ok");
+  persist();
+});
+
 /* ---------- events ---------- */
 
 els.tabs.forEach((t) =>
@@ -485,6 +600,8 @@ els.fileInput.addEventListener("change", async () => {
 els.refresh.addEventListener("click", doRefreshAll);
 els.flagFilter.addEventListener("input", renderCatalog);
 
+els.newName.addEventListener("input", () => hintValueFor(els.newName.value));
+
 els.form.addEventListener("submit", (e) => {
   e.preventDefault();
   const header = buildHeader(els.newName.value, els.newValue.value);
@@ -498,6 +615,7 @@ els.form.addEventListener("submit", (e) => {
   }
   els.newName.value = "";
   els.newValue.value = "";
+  hintValueFor("");
   persist();
   els.newName.focus();
 });
@@ -507,6 +625,7 @@ els.form.addEventListener("submit", (e) => {
   applyAppearance();
   buildSwatches();
   renderAppearance();
+  buildHeaderDatalist();
   if (IN_TAB) {
     document.body.classList.add("tabview");
     state.activeTab = "endpoint"; // the tab is only opened for file imports, which live here
