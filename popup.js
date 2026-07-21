@@ -5,6 +5,8 @@ import {
   normalizeCatalog,
   mergeCatalog,
   newSource,
+  newProfile,
+  activeProfile,
   ACCENTS,
   DEFAULT_ACCENT,
   encodeConfig,
@@ -57,10 +59,23 @@ const els = {
   importBox: document.getElementById("importBox"),
   importText: document.getElementById("importText"),
   importApply: document.getElementById("importApply"),
-  cfgStatus: document.getElementById("cfgStatus")
+  cfgStatus: document.getElementById("cfgStatus"),
+  // profiles
+  profileSelect: document.getElementById("profileSelect"),
+  profRenameInput: document.getElementById("profRenameInput"),
+  profNew: document.getElementById("profNew"),
+  profDup: document.getElementById("profDup"),
+  profRename: document.getElementById("profRename"),
+  profDel: document.getElementById("profDel")
 };
 
 let state;
+
+// The active profile owns headers / urlRegex / sources; everything below reads
+// and mutates through here so switching profiles swaps the whole working set.
+function prof() {
+  return activeProfile(state);
+}
 
 async function persist() {
   await saveState(state);
@@ -68,7 +83,7 @@ async function persist() {
 }
 
 function allEntries() {
-  return state.sources.flatMap((s) => (s.catalog ?? []).map((h, i) => ({ ...h, sourceId: s.id, i })));
+  return prof().sources.flatMap((s) => (s.catalog ?? []).map((h, i) => ({ ...h, sourceId: s.id, i })));
 }
 
 function makeDeleteButton(title, onDelete) {
@@ -103,7 +118,7 @@ function makeEditInput(roleClass, value, placeholder, commit) {
 function activeCount() {
   if (!state.masterEnabled) return 0;
   const fromSources = allEntries().filter((h) => h.active).length;
-  const manual = state.headers.filter((h) => h.enabled && h.name.trim() !== "").length;
+  const manual = prof().headers.filter((h) => h.enabled && h.name.trim() !== "").length;
   return fromSources + manual;
 }
 
@@ -159,7 +174,7 @@ async function refreshSource(source) {
 }
 
 async function doRefreshAll() {
-  const urlSources = state.sources.filter((s) => s.kind === "url" && s.url.trim());
+  const urlSources = prof().sources.filter((s) => s.kind === "url" && s.url.trim());
   if (!urlSources.length) {
     setStatus("No URL sources to refresh.", "warn");
     return;
@@ -173,7 +188,7 @@ async function doRefreshAll() {
   const failed = urlSources.filter((s) => s.error && !s.catalog.length).length;
   const total = allEntries().length;
   setStatus(
-    `${total} headers from ${state.sources.length} source(s)${failed ? ` · ${failed} failed` : ""}`,
+    `${total} headers from ${prof().sources.length} source(s)${failed ? ` · ${failed} failed` : ""}`,
     failed ? "error" : "ok"
   );
   render();
@@ -194,7 +209,7 @@ async function importIntoSource(source, file) {
 
 function renderSources() {
   els.sourceList.innerHTML = "";
-  state.sources.forEach((s, i) => {
+  prof().sources.forEach((s, i) => {
     const li = document.createElement("li");
     li.className = "sourcerow";
 
@@ -216,12 +231,12 @@ function renderSources() {
     } else {
       main.append(
         makeEditInput("name", s.url, "https://…/api/headers", (v) => {
-          state.sources[i].url = v;
+          prof().sources[i].url = v;
         })
       );
     }
 
-    main.append(makeDeleteButton("Remove source", () => state.sources.splice(i, 1)));
+    main.append(makeDeleteButton("Remove source", () => prof().sources.splice(i, 1)));
 
     const caption = document.createElement("span");
     caption.className = "sourcecaption";
@@ -242,13 +257,13 @@ function renderSources() {
 function renderCatalog() {
   const q = els.flagFilter.value.trim().toLowerCase();
   const entries = allEntries();
-  const showOrigin = state.sources.length > 1;
+  const showOrigin = prof().sources.length > 1;
   els.catalogEmpty.classList.toggle("hidden", entries.length > 0);
   els.catalogList.innerHTML = "";
 
   entries.forEach((h) => {
     if (q && !h.name.toLowerCase().includes(q)) return;
-    const source = state.sources.find((s) => s.id === h.sourceId);
+    const source = prof().sources.find((s) => s.id === h.sourceId);
     const li = document.createElement("li");
     li.className = "row" + (h.active ? "" : " off");
 
@@ -315,9 +330,9 @@ function hintValueFor(name) {
 
 function renderManual() {
   els.list.innerHTML = "";
-  els.empty.classList.toggle("hidden", state.headers.length > 0);
+  els.empty.classList.toggle("hidden", prof().headers.length > 0);
 
-  state.headers.forEach((h, i) => {
+  prof().headers.forEach((h, i) => {
     const li = document.createElement("li");
     li.className = "row" + (h.enabled ? "" : " off");
 
@@ -327,7 +342,7 @@ function renderManual() {
     cb.type = "checkbox";
     cb.checked = h.enabled;
     cb.addEventListener("change", () => {
-      state.headers[i].enabled = cb.checked;
+      prof().headers[i].enabled = cb.checked;
       persist();
     });
     const slider = document.createElement("span");
@@ -337,23 +352,37 @@ function renderManual() {
     const kv = document.createElement("span");
     kv.className = "kv";
     const name = makeEditInput("name", h.name, "", (v) => {
-      state.headers[i].name = v;
+      prof().headers[i].name = v;
     });
     const val = makeEditInput("val", h.value, "value", (v) => {
-      state.headers[i].value = v;
+      prof().headers[i].value = v;
     });
     kv.append(name, val);
 
-    li.append(toggle, kv, makeDeleteButton("Remove", () => state.headers.splice(i, 1)));
+    li.append(toggle, kv, makeDeleteButton("Remove", () => prof().headers.splice(i, 1)));
     els.list.append(li);
   });
 }
 
 /* ---------- shell ---------- */
 
+function renderProfiles() {
+  const sel = els.profileSelect;
+  sel.innerHTML = "";
+  state.profiles.forEach((p) => {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.name;
+    if (p.id === state.activeProfileId) o.selected = true;
+    sel.append(o);
+  });
+  els.profDel.disabled = state.profiles.length <= 1;
+}
+
 function render() {
+  renderProfiles();
   els.master.checked = state.masterEnabled;
-  if (document.activeElement !== els.urlRegex) els.urlRegex.value = state.urlRegex;
+  if (document.activeElement !== els.urlRegex) els.urlRegex.value = prof().urlRegex;
 
   const n = activeCount();
   els.count.textContent = n ? `${n} active` : "";
@@ -492,46 +521,84 @@ els.importApply.addEventListener("click", () => {
     return;
   }
 
-  let added = 0;
-  let updated = 0;
-  const byName = new Map(state.headers.map((h) => [h.name.toLowerCase(), h]));
-  for (const h of cfg.headers) {
-    const ex = byName.get(h.name.toLowerCase());
-    if (ex) {
-      ex.value = h.value;
-      ex.enabled = h.enabled;
-      updated++;
-    } else {
-      const nh = { name: h.name, value: h.value, enabled: h.enabled };
-      state.headers.push(nh);
-      byName.set(h.name.toLowerCase(), nh);
-      added++;
-    }
-  }
-
-  let srcAdded = 0;
-  const haveUrls = new Set(state.sources.filter((s) => s.kind === "url").map((s) => s.url.trim()));
-  for (const url of cfg.sources) {
-    if (!haveUrls.has(url)) {
-      const s = newSource("url");
-      s.url = url;
-      state.sources.push(s);
-      haveUrls.add(url);
-      srcAdded++;
-    }
-  }
-
-  if (cfg.urlRegex != null) state.urlRegex = cfg.urlRegex;
+  // A shared config lands as its own new profile, so it never clobbers the one
+  // you're on — then we switch to it.
+  const p = newProfile(cfg.name || "Imported");
+  p.headers = cfg.headers.map((h) => ({ name: h.name, value: h.value, enabled: h.enabled }));
+  p.sources = cfg.sources.map((url) => {
+    const s = newSource("url");
+    s.url = url;
+    return s;
+  });
+  if (cfg.urlRegex != null) p.urlRegex = cfg.urlRegex;
+  state.profiles.push(p);
+  state.activeProfileId = p.id;
 
   els.importText.value = "";
   els.importBox.classList.add("hidden");
   els.importToggle.setAttribute("aria-expanded", "false");
+  const n = p.headers.length;
+  setCfgStatus(`Imported "${p.name}" — ${n} header${n === 1 ? "" : "s"} ✓`, "ok");
+  persist();
+});
 
-  const parts = [];
-  if (added) parts.push(`${added} added`);
-  if (updated) parts.push(`${updated} updated`);
-  if (srcAdded) parts.push(`${srcAdded} source${srcAdded > 1 ? "s" : ""}`);
-  setCfgStatus(`Imported ${parts.join(", ") || "— no changes"} ✓`, "ok");
+/* ---------- profiles ---------- */
+
+function beginRename() {
+  els.profRenameInput.value = prof().name;
+  els.profileSelect.classList.add("hidden");
+  els.profRenameInput.classList.remove("hidden");
+  els.profRenameInput.focus();
+  els.profRenameInput.select();
+}
+
+function endRename(commit) {
+  if (commit) {
+    const v = els.profRenameInput.value.trim();
+    if (v) prof().name = v;
+  }
+  els.profRenameInput.classList.add("hidden");
+  els.profileSelect.classList.remove("hidden");
+  persist();
+}
+
+els.profileSelect.addEventListener("change", () => {
+  state.activeProfileId = els.profileSelect.value;
+  setStatus("", "");
+  persist();
+});
+
+els.profNew.addEventListener("click", () => {
+  const p = newProfile(`Profile ${state.profiles.length + 1}`);
+  state.profiles.push(p);
+  state.activeProfileId = p.id;
+  persist();
+  beginRename();
+});
+
+els.profDup.addEventListener("click", () => {
+  const a = prof();
+  const copy = newProfile(`${a.name} copy`);
+  copy.urlRegex = a.urlRegex;
+  copy.headers = structuredClone(a.headers);
+  copy.sources = structuredClone(a.sources);
+  state.profiles.push(copy);
+  state.activeProfileId = copy.id;
+  persist();
+});
+
+els.profRename.addEventListener("click", beginRename);
+els.profRenameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") endRename(true);
+  else if (e.key === "Escape") endRename(false);
+});
+els.profRenameInput.addEventListener("blur", () => endRename(true));
+
+els.profDel.addEventListener("click", () => {
+  if (state.profiles.length <= 1) return;
+  const i = state.profiles.findIndex((p) => p.id === state.activeProfileId);
+  state.profiles.splice(i, 1);
+  state.activeProfileId = state.profiles[Math.max(0, i - 1)].id;
   persist();
 });
 
@@ -561,7 +628,7 @@ els.urlRegex.addEventListener("input", () => {
   }
   els.urlRegexErr.classList.add("hidden");
   els.urlRegex.classList.remove("bad");
-  state.urlRegex = value;
+  prof().urlRegex = value;
   persist();
 });
 
@@ -570,7 +637,7 @@ function addUrlSource() {
   if (!url) return;
   const source = newSource("url");
   source.url = url;
-  state.sources.push(source);
+  prof().sources.push(source);
   els.newSourceUrl.value = "";
   setStatus("", "");
   persist();
@@ -587,10 +654,10 @@ els.fileInput.addEventListener("change", async () => {
   if (!file) return;
 
   const reimportId = els.fileInput.dataset.sourceId;
-  let source = reimportId && state.sources.find((s) => s.id === reimportId);
+  let source = reimportId && prof().sources.find((s) => s.id === reimportId);
   if (!source) {
     source = newSource("file");
-    state.sources.push(source);
+    prof().sources.push(source);
   }
 
   await importIntoSource(source, file);
@@ -606,12 +673,12 @@ els.form.addEventListener("submit", (e) => {
   e.preventDefault();
   const header = buildHeader(els.newName.value, els.newValue.value);
   if (!header) return;
-  const dup = state.headers.find((h) => h.name.toLowerCase() === header.name.toLowerCase());
+  const dup = prof().headers.find((h) => h.name.toLowerCase() === header.name.toLowerCase());
   if (dup) {
     dup.value = header.value;
     dup.enabled = true;
   } else {
-    state.headers.push(header);
+    prof().headers.push(header);
   }
   els.newName.value = "";
   els.newValue.value = "";
