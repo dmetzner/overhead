@@ -34,7 +34,7 @@ jobs:
         if: ${{ env.CWS_EXTENSION_ID != '' }}
         run: |
           zip -r "overhead-chrome.zip" \
-            manifest.json sw.js rules.js standard-headers.js popup.html popup popup.css icons \
+            manifest.json sw.js rules.js share.js standard-headers.js popup.html popup popup.css icons \
             -x "*.DS_Store"
 
       - name: Upload + publish to Chrome Web Store

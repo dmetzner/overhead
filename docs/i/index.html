@@ -134,40 +134,29 @@
       </p>
     </main>
 
-    <script>
-      function b64urlDecode(b64) {
-        const bin = atob(b64.replace(/-/g, "+").replace(/_/g, "/"));
-        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-        return new TextDecoder().decode(bytes);
-      }
-
-      // Keep in parity with decodeConfig in rules.js (CONFIG_VERSION = 2;
-      // v2 added sources[].headers) — test/share-page.test.js runs this script.
-      const MAX_VERSION = 2;
+    <script type="module">
+      // The preview uses the SAME decoder the extension imports — share.js,
+      // copied verbatim to /share.js — so what you see here is exactly what
+      // will import: same validation, same dropped rows. No second decoder to
+      // drift out of parity (test/share-parity.test.js enforces the copy).
+      import { decodeConfig } from "/share.js";
 
       const preview = document.getElementById("preview");
       const empty = document.getElementById("empty");
 
-      function fail() {
+      function fail(message) {
+        if (message) empty.textContent = message;
         preview.classList.add("hidden");
         empty.classList.remove("hidden");
       }
 
       try {
-        // decodeURIComponent throws on malformed %-sequences — it must fail
-        // into the empty state, not blank the page.
-        const code = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
-        if (!code) throw new Error("no code");
-        const data = JSON.parse(b64urlDecode(code));
-        if (typeof data.v === "number" && data.v > MAX_VERSION) {
-          empty.textContent = "This link was made by a newer version of Overhead — update the extension to import it.";
-          throw new Error("version");
-        }
-        const headers = Array.isArray(data.headers) ? data.headers : [];
-        const sources = (Array.isArray(data.sources) ? data.sources : []).filter(
-          (s) => s && typeof s.url === "string" && s.url.trim(),
-        );
-        if (!headers.length && !sources.length) throw new Error("empty");
+        const raw = location.hash.replace(/^#/, "").trim();
+        if (!raw) throw new Error("no code");
+        // decodeConfig validates + drops engine-invalid rows and throws a
+        // human-readable message on a malformed / too-new code.
+        const cfg = decodeConfig(raw);
+        if (!cfg.headers.length && !cfg.sources.length) throw new Error("empty");
 
         const list = document.getElementById("hdrs");
         function addRow(name, value, pill) {
@@ -188,48 +177,39 @@
           list.append(li);
         }
 
-        headers.forEach((h) => {
-          if (!h || typeof h.name !== "string" || !h.name.trim()) return;
-          addRow(
-            h.name.trim(),
-            typeof h.value === "string" && h.value !== "" ? h.value : "(empty)",
-            h.enabled === false ? "OFF" : "",
-          );
-        });
+        cfg.headers.forEach((h) =>
+          addRow(h.name, h.value !== "" ? h.value : "(empty)", h.enabled === false ? "OFF" : ""),
+        );
 
         let sourceRows = 0;
-        sources.forEach((s) => {
-          addRow("source", s.url.trim());
+        cfg.sources.forEach((s) => {
+          addRow("source", s.url);
           // v2: the sender's selected catalog rows travel with the source.
-          (Array.isArray(s.headers) ? s.headers : []).forEach((h) => {
-            if (!h || typeof h.name !== "string" || !h.name.trim()) return;
+          s.headers.forEach((h) => {
             sourceRows++;
-            addRow(
-              h.name.trim(),
-              typeof h.value === "string" && h.value !== "" ? h.value : "(empty)",
-              "VIA SOURCE",
-            );
+            addRow(h.name, h.value !== "" ? h.value : "(empty)", "VIA SOURCE");
           });
         });
 
-        const on = headers.filter((h) => h && h.enabled !== false).length;
-        const total = headers.length + sourceRows;
-        document.getElementById("count").textContent =
-          `${total} header${total === 1 ? "" : "s"}${on < headers.length ? ` · ${on} on` : ""}`;
+        const on = cfg.headers.filter((h) => h.enabled !== false).length;
+        const total = cfg.headers.length + sourceRows;
+        const bits = [`${total} header${total === 1 ? "" : "s"}`];
+        if (on < cfg.headers.length) bits.push(`${on} on`);
+        if (cfg.dropped) bits.push(`${cfg.dropped} invalid dropped`);
+        document.getElementById("count").textContent = bits.join(" · ");
 
         const scope = document.getElementById("scope");
-        const rx = typeof data.urlRegex === "string" ? data.urlRegex : ".*";
-        scope.innerHTML = "";
+        const rx = typeof cfg.urlRegex === "string" && cfg.urlRegex ? cfg.urlRegex : ".*";
         scope.append(document.createTextNode("Scope: "));
         const codeEl = document.createElement("code");
         codeEl.textContent = rx && rx !== ".*" ? rx : "all URLs";
         scope.append(codeEl);
 
         const field = document.getElementById("codeField");
-        field.value = code;
+        field.value = raw;
         document.getElementById("copyCode").addEventListener("click", async (e) => {
           try {
-            await navigator.clipboard.writeText(code);
+            await navigator.clipboard.writeText(raw);
             e.target.textContent = "Copied ✓";
             setTimeout(() => (e.target.textContent = "Copy config code"), 1600);
           } catch {
@@ -242,8 +222,10 @@
         });
 
         preview.classList.remove("hidden");
-      } catch {
-        fail();
+      } catch (err) {
+        // decodeConfig throws a friendly message for a too-new version — surface
+        // that one; everything else falls back to the generic empty state.
+        fail(/newer version/i.test(err?.message || "") ? err.message : "");
       }
     </script>
 

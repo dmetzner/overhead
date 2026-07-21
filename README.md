@@ -114,12 +114,13 @@ A teammate opens the link, sees exactly which headers (and values) it carries,
 copies the code, and pastes it into **Config → Import…** → **Apply import**.
 Import lands the config as a **new, inactive profile** (it never overwrites the
 one you're on); switch to it in the profile bar when you're ready. A warning
-shows if the config carries credential headers or an `.*` scope.
-`encodeConfig`/`decodeConfig` in `rules.js` own the format (versioned as
-`CONFIG_VERSION`, checked on decode; v2 carries endpoint selections so a
-source-driven profile round-trips as a working setup). Because the values are
-visible to anyone with the link, a link carrying a token or secret should be
-shared with care.
+shows if the config carries credential headers or a broad (catch-all) scope.
+`encodeConfig` (in `rules.js`) and `decodeConfig` (in the shared `share.js`) own
+the format (versioned as `CONFIG_VERSION`, checked on decode; v2 carries
+endpoint selections so a source-driven profile round-trips as a working setup).
+The same `share.js` decodes the link on the import-preview page, so the preview
+shows exactly what will import. Because the values are visible to anyone with the
+link, a link carrying a token or secret should be shared with care.
 
 ## Install
 
@@ -205,10 +206,12 @@ on Firefox (Chrome shows the dialog fine from the popup directly).
 
 ```
 manifest.json      extension manifest (MV3, Chrome + Firefox)
-rules.js           shared state + migration + DNR rule builder + config share codec
+share.js           pure, browser-free core: header validation + share codec + risk helpers (shared verbatim with the site)
+rules.js           extension state + migration + DNR rule builder + encodeConfig (re-exports share.js)
 standard-headers.js curated request-header list backing the Manual autocomplete
 sw.js              background script — applies rules on install/startup/change
-popup.html/js/css  endpoint + manual + profiles + settings UI
+popup.html/css     popup shell + styles
+popup/             popup ES modules: endpoint + manual + profiles + settings UI
 icons/             extension icon (svg source + 16/48/128 png)
 examples/          sample headers.json to try the Endpoint tab's File import
 docs/              the overhead.metzner.uk site (GitHub Pages): landing + /i importer

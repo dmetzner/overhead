@@ -1,6 +1,7 @@
 /* Endpoint tab: URL/file sources, the merged catalog list, and refresh. */
 
 import {
+  countChangedActiveValues,
   fetchCatalog,
   headerValueError,
   mergeCatalog,
@@ -44,15 +45,22 @@ function openFilePicker(sourceId) {
 async function refreshSource(source) {
   try {
     const { headers, dropped } = await fetchCatalog(source.url);
-    source.catalog = mergeCatalog(source.catalog, headers);
+    const merged = mergeCatalog(source.catalog, headers);
+    // An enabled row whose value changed at the source gets injected with the
+    // new value on the next apply — count it (before overwriting the catalog) so
+    // a silent swap (e.g. a compromised endpoint rotating a token) is surfaced.
+    const changed = countChangedActiveValues(source.catalog, merged);
+    source.catalog = merged;
     source.syncedAt = new Date().toISOString();
     source.error = dropped ? `${dropped} malformed row(s) dropped` : null;
     source.stale = false;
+    return changed;
   } catch (err) {
     // Keep the cached rows but flag them: they now come from a failed source
     // and may no longer match what the endpoint would serve.
     source.error = err.message;
     source.stale = (source.catalog ?? []).length > 0;
+    return 0;
   }
 }
 
@@ -65,8 +73,10 @@ async function doRefreshAll() {
   els.refresh.disabled = true; // no duplicate refreshes while one is running
   els.refresh.classList.add("spin");
   setStatus("Fetching…", "");
+  let changed = 0;
   try {
-    await Promise.all(urlSources.map(refreshSource));
+    const counts = await Promise.all(urlSources.map(refreshSource));
+    changed = counts.reduce((a, b) => a + b, 0);
     await persist({ rerender: false });
   } finally {
     els.refresh.disabled = false;
@@ -80,8 +90,9 @@ async function doRefreshAll() {
   setStatus(
     `${allEntries().length} headers from ${prof().sources.length} source(s)` +
       (failed ? ` · ${failed} failed` : "") +
-      (stale ? ` · stale data kept` : ""),
-    failed ? "error" : "ok",
+      (stale ? ` · stale data kept` : "") +
+      (changed ? ` · ${changed} active value(s) changed at source` : ""),
+    failed ? "error" : changed ? "warn" : "ok",
   );
   render();
 }

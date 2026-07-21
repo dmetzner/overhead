@@ -5,6 +5,8 @@ import {
   DEFAULT_ACCENT,
   decodeConfig,
   encodeConfig,
+  isBroadScope,
+  isCredentialHeader,
   newProfile,
   newSource,
   SHARE_BASE,
@@ -118,10 +120,14 @@ async function applyImport() {
   els.importBox.classList.add("hidden");
   els.importToggle.setAttribute("aria-expanded", "false");
   const n = p.headers.length + p.sources.reduce((sum, s) => sum + s.catalog.length, 0);
-  const risky =
-    p.headers.some((h) =>
-      /^(authorization|cookie|proxy-authorization|x-forwarded-for)$/i.test(h.name),
-    ) || p.urlRegex === ".*";
+  // Flag anything worth a second look before switching: a credential-class
+  // header anywhere in the config, or a scope broad enough to hit unrelated
+  // sites (isBroadScope catches `.*`, `.`, unanchored catch-alls — not a
+  // specific host pattern). See share.js.
+  const hasCredHeader =
+    p.headers.some((h) => isCredentialHeader(h.name)) ||
+    p.sources.some((s) => s.catalog.some((h) => isCredentialHeader(h.name)));
+  const risky = hasCredHeader || isBroadScope(p.urlRegex);
   const notes = [];
   if (cfg.dropped) notes.push(`${cfg.dropped} invalid row(s) dropped`);
   if (regexErr) notes.push("its URL pattern is invalid — fix it before switching");

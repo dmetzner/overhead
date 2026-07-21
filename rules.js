@@ -1,3 +1,25 @@
+import {
+  b64urlEncode,
+  CONFIG_VERSION,
+  decodeConfig,
+  headerNameError,
+  headerValueError,
+  isBroadScope,
+  isCredentialHeader,
+} from "./share.js";
+
+// Re-export the shared codec + validation so rules.js stays the single import
+// surface for the popup and tests; share.js is the source of truth (and the
+// same file, copied to docs/, backs the share-link preview page).
+export {
+  CONFIG_VERSION,
+  decodeConfig,
+  headerNameError,
+  headerValueError,
+  isBroadScope,
+  isCredentialHeader,
+};
+
 // Firefox exposes the promise-based WebExtension APIs on `browser`; Chrome (121+)
 // exposes the same promise API on `chrome`. `browser ?? chrome` picks the
 // promise-based namespace on either browser.
@@ -17,26 +39,11 @@ const DEFAULT_URL_REGEX = ".*";
 
 /* ---------- validation ----------
    updateDynamicRules is atomic: one bad header name/value or an RE2-invalid
-   pattern rejects the whole update and nothing is injected. Validate centrally
-   so every entry point (manual add, inline edit, import, endpoint rows) agrees
-   with what the engine will actually accept. */
-
-// RFC 9110 token — the charset Chromium enforces for header names.
-const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-// Field content: no CR/LF/NUL or other C0 controls (tab allowed).
-const HEADER_VALUE_RE = /^[\t\x20-\x7E\u0080-\uFFFF]*$/;
-
-export function headerNameError(name) {
-  const n = (name ?? "").trim();
-  if (!n) return "Header name is empty.";
-  if (!HEADER_NAME_RE.test(n)) return `"${n}" is not a valid HTTP header name.`;
-  return null;
-}
-
-export function headerValueError(value) {
-  if (!HEADER_VALUE_RE.test(value ?? "")) return "Header value contains control characters.";
-  return null;
-}
+   pattern rejects the whole update and nothing is injected. Header name/value
+   validation is centralized in share.js (pure, shared verbatim with the
+   preview page); urlRegexError stays here because it consults the
+   declarativeNetRequest RE2 engine, which only exists in an extension
+   context. */
 
 // DNR's regexFilter runs RE2, which is stricter than JS RegExp. Syntax-check
 // with RegExp first (fast, works everywhere), then ask the engine itself via
@@ -112,26 +119,10 @@ export function injectionSig(state) {
    any URL sources (file sources are local, so they're left out). It's packed to
    a URL-safe base64 string carried in a link fragment, so sharing is entirely
    client-side: the blob never touches a server. The /i page on the site decodes
-   and previews it; the popup's Import pastes it back. */
+   and previews it (via the same share.js); the popup's Import pastes it back.
+   CONFIG_VERSION, b64url*, and decodeConfig live in share.js. */
 
-// v2 added per-source selections (sources[].headers) so a source-driven profile
-// round-trips as a working setup. Plain shares still encode as v1, so older
-// installs keep importing them. Keep docs/i/index.html's decoder in parity.
-export const CONFIG_VERSION = 2;
 export const SHARE_BASE = "https://overhead.metzner.uk/i";
-
-function b64urlEncode(str) {
-  const bytes = new TextEncoder().encode(str);
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function b64urlDecode(b64) {
-  const bin = atob(b64.replace(/-/g, "+").replace(/_/g, "/"));
-  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
 
 // Serialize the active profile's shareable slice to a URL-safe code.
 export function encodeConfig(state) {
@@ -154,57 +145,6 @@ export function encodeConfig(state) {
     sources,
   };
   return b64urlEncode(JSON.stringify(payload));
-}
-
-// Parse a share code (raw, or a full link — anything after the last "#" is used)
-// into { name, headers, sources, urlRegex, dropped }. Entries with header names
-// the engine would reject are dropped and counted, so an imported config can
-// never poison the atomic DNR update. Throws on a malformed code.
-export function decodeConfig(input) {
-  const code = String(input).trim().split("#").pop().trim();
-  if (!code) throw new Error("No config code found.");
-  let data;
-  try {
-    data = JSON.parse(b64urlDecode(code));
-  } catch {
-    throw new Error("That doesn't look like an Overhead config code.");
-  }
-  if (!data || typeof data !== "object") {
-    throw new Error("Config code is malformed.");
-  }
-  if (typeof data.v === "number" && data.v > CONFIG_VERSION) {
-    throw new Error("This share code is from a newer version of Overhead — update to import it.");
-  }
-  let dropped = 0;
-  const keepRow = (h) => {
-    const ok =
-      h &&
-      typeof h.name === "string" &&
-      !headerNameError(h.name) &&
-      !headerValueError(typeof h.value === "string" ? h.value : "");
-    if (h && !ok) dropped++;
-    return ok;
-  };
-  const rowValue = (h) => (typeof h.value === "string" ? h.value : "");
-  const headers = (Array.isArray(data.headers) ? data.headers : []).filter(keepRow).map((h) => ({
-    name: h.name.trim(),
-    value: rowValue(h),
-    enabled: h.enabled !== false,
-  }));
-  const sources = Array.isArray(data.sources)
-    ? data.sources
-        .filter((s) => s && typeof s.url === "string" && s.url.trim())
-        .map((s) => ({
-          url: s.url.trim(),
-          headers: (Array.isArray(s.headers) ? s.headers : [])
-            .filter(keepRow)
-            .map((h) => ({ name: h.name.trim(), value: rowValue(h) })),
-        }))
-    : [];
-  const urlRegex = typeof data.urlRegex === "string" ? data.urlRegex : null;
-  const name =
-    typeof data.name === "string" && data.name.trim() ? data.name.trim() : "Shared config";
-  return { name, headers, sources, urlRegex, dropped };
 }
 
 // Global state holds appearance + which profile is active; each profile owns the
@@ -379,6 +319,18 @@ export async function fetchCatalog(url) {
 export function mergeCatalog(prevHeaders, freshHeaders) {
   const prev = new Map((prevHeaders ?? []).map((h) => [h.name, h]));
   return freshHeaders.map((h) => ({ ...h, active: prev.get(h.name)?.active ?? false }));
+}
+
+// How many currently-enabled rows had their value changed by the refetch. An
+// active row's value is injected as-is on the next apply, so a silent change at
+// the source (e.g. a compromised endpoint rotating a token) is worth surfacing.
+// Pure so it can be tested without a live refresh; `merged` is mergeCatalog's
+// output, `prev` the catalog before the merge.
+export function countChangedActiveValues(prev, merged) {
+  const before = new Map((prev ?? []).filter((h) => h.active).map((h) => [h.name, h.value]));
+  return (merged ?? []).filter(
+    (h) => h.active && before.has(h.name) && before.get(h.name) !== h.value,
+  ).length;
 }
 
 // The headers the active profile currently injects, deduplicated the way DNR

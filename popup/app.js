@@ -1,7 +1,13 @@
 /* Popup entry point: bootstraps state, composes the render pass, and owns the
    shell (master switch, tabs, URL scope, rule-status banner). */
 
-import { partitionActiveHeaders, RULE_STATUS_KEY, urlRegexError } from "../rules.js";
+import {
+  isBroadScope,
+  isCredentialHeader,
+  partitionActiveHeaders,
+  RULE_STATUS_KEY,
+  urlRegexError,
+} from "../rules.js";
 import { els, IN_TAB, setGlobalError, setStatus } from "./dom.js";
 import { initEndpoint, renderEndpoint } from "./endpoint.js";
 import { initManual, renderManual } from "./manual.js";
@@ -20,8 +26,19 @@ function render() {
 
   // Same list the DNR rule is built from — the popup count, the badge, and the
   // engine can't disagree (engine-invalid rows are skipped there too).
-  const n = partitionActiveHeaders(state).valid.length;
-  els.count.textContent = n ? `${n} active` : "";
+  const { valid } = partitionActiveHeaders(state);
+  els.count.textContent = valid.length ? `${valid.length} active` : "";
+
+  // Warn when a secret-bearing header is live under a scope broad enough to hit
+  // unrelated sites — that leaks the credential cross-origin. Non-blocking: the
+  // user stays in control, but the risk is pinned where they can't miss it.
+  const leaky = valid.some((h) => isCredentialHeader(h.name)) && isBroadScope(prof().urlRegex);
+  setGlobalError(
+    "scope-leak",
+    leaky
+      ? "A credential header is active under a very broad URL scope — it can be sent to sites you didn't intend. Narrow the scope to limit it."
+      : "",
+  );
 
   els.tabs.forEach((t) => {
     const on = t.dataset.tab === state.activeTab;

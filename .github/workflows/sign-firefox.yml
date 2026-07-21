@@ -53,7 +53,7 @@ jobs:
       # And the CI gate: never sign what the suite hasn't passed.
       - name: Lint + tests
         run: |
-          npx --yes @biomejs/biome@2.5.1 ci .
+          npx --yes @biomejs/biome@2.5.5 ci .
           node --test
 
       # web-ext lints and packs from a clean dir, so stage only the runtime files
@@ -61,7 +61,7 @@ jobs:
       - name: Stage extension files
         run: |
           mkdir -p dist
-          cp -r manifest.json sw.js rules.js standard-headers.js popup.html popup popup.css icons dist/
+          cp -r manifest.json sw.js rules.js share.js standard-headers.js popup.html popup popup.css icons dist/
           # Firefox has no service_worker background (bug 1573659) — it uses an
           # event page via background.scripts. The committed manifest is
           # Chrome-canonical (service_worker only, no Chrome warning); swap in

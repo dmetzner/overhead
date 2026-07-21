@@ -2,6 +2,30 @@
 
 All notable changes to Overhead. Versions match `manifest.json` / release tags.
 
+## 2.5.0
+
+Follow-up audit — collapse the duplicated share decoder and warn on credential
+leaks.
+
+- **One share decoder, not two:** the codec + header validation moved to a pure
+  `share.js`, imported by the extension core and — copied verbatim to
+  `docs/share.js` — by the share-link preview page. The page previously
+  reimplemented the decoder and had already drifted (it previewed rows the
+  extension would reject); now it decodes through the exact same code, so the
+  preview matches the import. A parity test fails CI if the copy goes stale
+  (`npm run sync:share` refreshes it).
+- **Credential-leak warning:** the popup now warns, in the pinned status banner,
+  when a credential-class header (`Authorization`, `Cookie`, `X-Api-Key`, …) is
+  active under a scope broad enough to hit unrelated sites — the setup that would
+  send a secret to every site you visit. Import risk detection uses the same
+  check (any credential header, any catch-all scope — including bare-TLD wildcards
+  like `\.io`, not just a literal `.*`). The broad-scope probe bounds regex
+  backtracking (quantifier budget) so a crafted share-link scope can't freeze the
+  popup; the real request matcher already runs on linear RE2.
+- **Silent source value swaps surfaced:** a refresh that changes the value of an
+  already-enabled endpoint row now reports it, so a compromised endpoint can't
+  quietly rotate a token you're injecting.
+
 ## 2.4.0
 
 Trust release — every finding of the 2026-07 external audit fixed.

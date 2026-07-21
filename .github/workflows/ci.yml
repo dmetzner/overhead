@@ -20,10 +20,10 @@ jobs:
         with:
           node-version: "20"
       - name: Lint + format (Biome)
-        run: npx --yes @biomejs/biome@2.5.1 ci .
+        run: npx --yes @biomejs/biome@2.5.5 ci .
       - name: Syntax check
         run: |
-          for f in rules.js sw.js standard-headers.js popup/*.js; do
+          for f in rules.js share.js sw.js standard-headers.js popup/*.js; do
             node --check "$f"
           done
       - name: Tests

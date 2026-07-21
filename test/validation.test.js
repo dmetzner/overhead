@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { headerNameError, headerValueError, urlRegexError } from "../rules.js";
+import {
+  headerNameError,
+  headerValueError,
+  isBroadScope,
+  isCredentialHeader,
+  urlRegexError,
+} from "../rules.js";
 
 test("headerNameError accepts RFC 9110 tokens", () => {
   assert.equal(headerNameError("X-Custom-Header"), null);
@@ -28,6 +34,63 @@ test("urlRegexError: valid and syntactically broken patterns (RegExp path)", asy
   assert.equal(await urlRegexError("(shop|admin)\\.example\\.dev"), null);
   assert.equal(await urlRegexError(""), null); // empty falls back to .*
   assert.ok(await urlRegexError("(unclosed"));
+});
+
+test("isCredentialHeader flags secret-bearing headers, case-insensitively", () => {
+  for (const n of ["Authorization", "cookie", "Proxy-Authorization", "X-Api-Key", "x-auth-token"]) {
+    assert.equal(isCredentialHeader(n), true, n);
+  }
+  for (const n of ["X-Env", "Accept", "", "  ", "content-type"]) {
+    assert.equal(isCredentialHeader(n), false, JSON.stringify(n));
+  }
+});
+
+test("isBroadScope catches catch-all patterns but not specific host patterns", () => {
+  // Universal catch-alls, and bare-TLD wildcards across common TLDs that each
+  // match nearly every site on that TLD.
+  const broad = ["", ".*", ".", ".+", "^.*$", "https?"];
+  for (const tld of ["com", "org", "net", "io", "dev", "app"]) {
+    broad.push(`\\.${tld}`, `.*\\.${tld}`);
+  }
+  for (const rx of broad) {
+    assert.equal(isBroadScope(rx), true, `broad: ${JSON.stringify(rx)}`);
+  }
+  // A full host pattern is specific even when it ends in a common TLD.
+  for (const rx of [
+    "api\\.example\\.dev",
+    "shop\\.internal",
+    "(shop|admin)\\.example\\.com",
+    "my-app\\.fly\\.io",
+  ]) {
+    assert.equal(isBroadScope(rx), false, `specific: ${rx}`);
+  }
+  // A broken pattern isn't reported as broad — it's surfaced as invalid elsewhere.
+  assert.equal(isBroadScope("(unclosed"), false);
+});
+
+test("isBroadScope resists catastrophic backtracking (ReDoS guard)", () => {
+  // Patterns crafted to make JS RegExp backtrack super-linearly. Each must return
+  // quickly (skipped by the quantifier budget, never run against the sentinels)
+  // so a crafted share-link scope can't freeze the popup on import. Includes the
+  // classic nested shapes AND the two that defeated an earlier shape-denylist:
+  // sequential quantifiers (polynomial) and a nested quantified group.
+  const evil = [
+    "(.*)*!",
+    "(a+)+$",
+    "(a|a)*",
+    "(a|ab)*c",
+    "(x+x+)+y",
+    "(.*a){20}z",
+    `${".*".repeat(12)}!`, // polynomial: stacked .* — no groups, no adjacent quantifiers
+    `${".*".repeat(80)}!`,
+    "((.)+)+!", // exponential: quantifier outside a nested group
+    `${".?".repeat(26)}ZZZ`, // exponential via stacked ? — the quantifier a budget can forget
+    `${".?".repeat(98)}ZZZ`,
+  ];
+  const start = process.hrtime.bigint();
+  for (const rx of evil) assert.equal(isBroadScope(rx), false, `skipped: ${rx}`);
+  const ms = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.ok(ms < 500, `all backtracking patterns handled in ${ms.toFixed(1)}ms`);
 });
 
 test("urlRegexError consults DNR's isRegexSupported when available", async () => {

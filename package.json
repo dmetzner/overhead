@@ -1,6 +1,6 @@
 {
   "name": "overhead",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
   "description": "Browser extension that injects HTTP request headers.",
@@ -8,9 +8,10 @@
     "test": "node --test",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "check": "biome check . && node --test"
+    "sync:share": "cp share.js docs/share.js",
+    "check": "npm run sync:share && biome check . && node --test"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.1"
+    "@biomejs/biome": "^2.5.5"
   }
 }
