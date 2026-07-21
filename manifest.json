@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Overhead",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Inject arbitrary request headers per request — toggleable, URL-scoped, with optional JSON header catalogs.",
   "permissions": ["declarativeNetRequest", "storage"],
   "host_permissions": ["<all_urls>"],
