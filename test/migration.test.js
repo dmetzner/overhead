@@ -79,3 +79,76 @@ test("saveState → loadState round-trips the catalog back onto the source", asy
   const reloaded = await loadState();
   assert.equal(reloaded.profiles[0].sources[0].catalog.length, 1);
 });
+
+test("duplicated source ids get split into fresh ids with their own catalog copy", async () => {
+  // Pre-fix profile duplication cloned sources including their ids — both
+  // profiles then shared one catalog slot in storage.local.
+  reset({
+    activeProfileId: "p1",
+    profiles: [
+      {
+        id: "p1",
+        name: "A",
+        urlRegex: ".*",
+        headers: [],
+        sources: [{ id: "s1", kind: "url", url: "u" }],
+      },
+      {
+        id: "p2",
+        name: "A copy",
+        urlRegex: ".*",
+        headers: [],
+        sources: [{ id: "s1", kind: "url", url: "u" }],
+      },
+    ],
+  });
+  local.overheadCatalogs = { s1: [{ name: "a", value: "1", active: true }] };
+
+  const st = await loadState();
+  const [s1] = st.profiles[0].sources;
+  const [s2] = st.profiles[1].sources;
+  assert.notEqual(s1.id, s2.id); // fresh id for the later occurrence
+  assert.deepEqual(s2.catalog, s1.catalog); // same content…
+  s2.catalog[0].value = "changed";
+  assert.equal(s1.catalog[0].value, "1"); // …but no longer the same array
+
+  // After a save, each id owns its own catalog slot.
+  await saveState(st);
+  assert.equal(Object.keys(local.overheadCatalogs).length, 2);
+});
+
+test("saveState writes sync (source of truth) before local catalogs", async () => {
+  reset(null);
+  const order = [];
+  const origSync = globalThis.chrome.storage.sync.set;
+  const origLocal = globalThis.chrome.storage.local.set;
+  globalThis.chrome.storage.sync.set = async (o) => {
+    order.push("sync");
+    return origSync(o);
+  };
+  globalThis.chrome.storage.local.set = async (o) => {
+    order.push("local");
+    return origLocal(o);
+  };
+  const st = await loadState();
+  await saveState(st);
+  globalThis.chrome.storage.sync.set = origSync;
+  globalThis.chrome.storage.local.set = origLocal;
+  assert.deepEqual(order, ["sync", "local"]);
+});
+
+test("saveState reports a failed write instead of losing it", async () => {
+  reset(null);
+  const st = await loadState();
+  const orig = globalThis.chrome.storage.sync.set;
+  globalThis.chrome.storage.sync.set = async () => {
+    throw new Error("QUOTA_BYTES exceeded");
+  };
+  const res = await saveState(st);
+  globalThis.chrome.storage.sync.set = orig;
+  assert.equal(res.ok, false);
+  assert.match(res.error, /QUOTA_BYTES/);
+  // and the queue keeps working afterwards
+  const res2 = await saveState(st);
+  assert.equal(res2.ok, true);
+});

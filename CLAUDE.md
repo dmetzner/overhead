@@ -5,12 +5,17 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
 `dmetzner/overhead`. No build step, no framework, no TypeScript — plain ES modules.
 
 ## Layout
-- `rules.js` — the shared core (imported by both `sw.js` and `popup.js`): state
-  model + `loadState` migration, `activeProfile`, `injectionSig`, the DNR rule
-  builder (`applyRules`), catalog fetch/validate, and the share codec
-  (`encodeConfig`/`decodeConfig`).
+- `rules.js` — the shared core (imported by both `sw.js` and the popup): state
+  model + `loadState` migrations, `activeProfile`, `injectionSig`, header/RE2
+  validation (`headerNameError`/`headerValueError`/`urlRegexError`), the DNR
+  rule builder (`applyRules`, fail-closed + status under `RULE_STATUS_KEY`),
+  catalog fetch/validate (10 s timeout), and the share codec
+  (`encodeConfig`/`decodeConfig`, v2 carries source selections).
 - `sw.js` — background; rebuilds DNR rules on relevant storage changes.
-- `popup.{html,js,css}` — the popup UI (endpoint / manual / profiles / settings).
+  `lastSig` is only recorded after a *successful* apply, so failures retry.
+- `popup.html` / `popup.css` / `popup/` — the popup UI as ES modules:
+  `app.js` (entry/shell), `store.js` (state + persist + render), `dom.js`
+  (els + builders), `endpoint.js`, `manual.js`, `profiles.js`, `settings.js`.
 - `standard-headers.js` — autocomplete list.
 - `docs/` — the `overhead.metzner.uk` site: `index.html` (landing) + `i/index.html`
   (share-link importer/preview). GitHub Pages, source = `main` `/docs`.
@@ -30,6 +35,14 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
 - **Share format is a 2-artifact contract:** `rules.js` AND `docs/i/index.html`
   both decode the same base64url fragment. Keep them in parity (there's a parity
   test) and bump/check `CONFIG_VERSION` on both sides when the shape changes.
+- **Validation is centralized in `rules.js`** — `updateDynamicRules` is atomic,
+  so one engine-invalid header/pattern would void the whole rule set. Every
+  entry point (manual add, inline edit, import, applyRules itself) must go
+  through `headerNameError`/`headerValueError`/`urlRegexError`; don't add an
+  input path that bypasses them.
+- **Ship-list is duplicated in three workflows** (`pack.yml`,
+  `sign-firefox.yml`, `publish-chrome.yml`): adding a runtime file/dir means
+  updating all three (the `popup` directory is shipped as a whole).
 - **Per-browser manifest:** committed `manifest.json` is Chrome (`service_worker`);
   the CI Firefox build swaps in `background.scripts` via a `jq` step. Edit both
   builds in the workflows if the background block changes.

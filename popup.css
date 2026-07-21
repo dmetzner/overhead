@@ -304,6 +304,48 @@ body.master-off .rows {
   opacity: 0.45;
 }
 
+/* global error banner: save/rule failures, visible on every pane */
+.globalerr {
+  margin: 0;
+  padding: 7px 12px;
+  font-size: 11px;
+  color: #fff;
+  background: var(--danger);
+  word-break: break-word;
+}
+
+/* small controls keep their compact look but get a ≥24px hit area (WCAG 2.5.8) */
+.del,
+.info,
+.gear {
+  position: relative;
+}
+.del::after,
+.info::after,
+.gear::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, 24px);
+  height: max(100%, 24px);
+  transform: translate(-50%, -50%);
+}
+.slider::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 24px;
+  transform: translateY(-50%);
+}
+.segmented button,
+.cfgbtn,
+.reimport {
+  min-height: 24px;
+}
+
 /* tabs */
 .tabs {
   display: flex;
@@ -408,6 +450,9 @@ input[type="text"].bad:focus {
   font-size: 11px;
   color: var(--danger);
   word-break: break-word;
+}
+.formerr {
+  padding: 0 12px 8px;
 }
 
 /* endpoint bar */
@@ -640,7 +685,9 @@ input[type="text"].bad:focus {
 .add .value {
   flex: 0 0 90px;
 }
-.row .del {
+/* delete buttons appear in .row (headers) AND .sourcemain (sources) — style
+   the class itself so no context renders a bare default button */
+.del {
   background: none;
   border: none;
   color: var(--muted);
@@ -649,8 +696,9 @@ input[type="text"].bad:focus {
   line-height: 1;
   padding: 2px 4px;
   border-radius: 4px;
+  flex: 0 0 auto;
 }
-.row .del:hover {
+.del:hover {
   color: var(--danger);
   background: var(--panel);
 }

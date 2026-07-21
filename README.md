@@ -116,8 +116,10 @@ Import lands the config as a **new, inactive profile** (it never overwrites the
 one you're on); switch to it in the profile bar when you're ready. A warning
 shows if the config carries credential headers or an `.*` scope.
 `encodeConfig`/`decodeConfig` in `rules.js` own the format (versioned as
-`CONFIG_VERSION`, checked on decode). Because the values are visible to anyone
-with the link, a link carrying a token or secret should be shared with care.
+`CONFIG_VERSION`, checked on decode; v2 carries endpoint selections so a
+source-driven profile round-trips as a working setup). Because the values are
+visible to anyone with the link, a link carrying a token or secret should be
+shared with care.
 
 ## Install
 
