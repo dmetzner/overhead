@@ -6,3 +6,6 @@ node_modules/
 # build staging / signing output (created in CI, or locally by web-ext)
 dist/
 web-ext-artifacts/
+
+# temp render harnesses
+_*.html

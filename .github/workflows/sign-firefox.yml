@@ -45,7 +45,7 @@ jobs:
       - name: Stage extension files
         run: |
           mkdir -p dist
-          cp -r manifest.json sw.js rules.js popup.html popup.js popup.css icons dist/
+          cp -r manifest.json sw.js rules.js standard-headers.js popup.html popup.js popup.css icons dist/
           # Firefox has no service_worker background (bug 1573659) — it uses an
           # event page via background.scripts. The committed manifest is
           # Chrome-canonical (service_worker only, no Chrome warning); swap in

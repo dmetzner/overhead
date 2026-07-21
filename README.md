@@ -49,11 +49,16 @@ Try it without a real backend: **File…** → pick [`examples/headers.sample.js
 ## Manual source
 
 Type any header name + value and it's sent as-is — no prefixing, no magic. Use
-it for one-off headers or ones the endpoint doesn't list. Each row's name and
-value are editable in place; re-adding an existing name updates its value
-instead of duplicating. The per-row toggle enables/disables one header; the
-master switch in the header bar disables all headers (endpoint + manual) at
-once.
+it for one-off headers or ones the endpoint doesn't list. The name field
+autocompletes from a curated list of ~60 standard and de-facto request headers
+(`Accept`, `Authorization`, `X-Forwarded-For`, …); pick one and the value field
+hints its typical value as a placeholder. It's just a convenience list — you can
+still type any header, and a few the browser controls itself (`Host`,
+`Content-Length`, some `Sec-*`) may be ignored even when set, so they're flagged
+in the dropdown. Each row's name and value are editable in place; re-adding an
+existing name updates its value instead of duplicating. The per-row toggle
+enables/disables one header; the master switch in the header bar disables all
+headers (endpoint + manual) at once.
 
 ## URL regex filter
 
@@ -73,6 +78,24 @@ toolbar badge. Both persist in `storage.sync`, so they follow you across
 browsers signed into the same profile. Palettes are plain CSS custom properties
 in `popup.css` (`--bg`, `--panel`, `--accent`, …) — add or retint a theme by
 editing those, and add an accent by extending the `ACCENTS` map in `rules.js`.
+
+## Sharing configs
+
+The gear's **Config** section shares a setup without exporting JSON by hand.
+**Copy share link** packs the portable slice of your state — the manual
+headers, the URL scope, and any URL sources (local file sources are left out) —
+into a URL-safe code inside a link fragment:
+`https://overhead.metzner.uk/i#<code>`. The data lives entirely in the fragment,
+so **nothing is ever sent to a server** — the [`/i` page](docs/i/index.html) on
+the site decodes and previews it client-side.
+
+A teammate opens the link, sees exactly which headers (and values) it carries,
+copies the code, and pastes it into **Config → Import…** → **Apply import**.
+Import *merges*: matching header names are updated, new ones added, URL sources
+appended, and the scope regex applied. `encodeConfig`/`decodeConfig` in
+`rules.js` own the format (versioned as `CONFIG_VERSION`). Because the values
+are visible to anyone with the link, a link carrying a token or secret should be
+shared with care.
 
 ## Install
 
@@ -159,6 +182,7 @@ on Firefox (Chrome shows the dialog fine from the popup directly).
 ```
 manifest.json      extension manifest (MV3, Chrome + Firefox)
 rules.js           shared state + DNR rule builder + catalog fetch/validate
+standard-headers.js curated request-header list backing the Manual autocomplete
 sw.js              background script — applies rules on install/startup/change
 popup.html/js/css  endpoint + manual header UI
 examples/          sample headers.json to try the Endpoint tab's File import

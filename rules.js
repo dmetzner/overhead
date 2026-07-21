@@ -26,6 +26,72 @@ export function newSource(kind) {
   return { id: newId(), kind, url: "", fileName: "", catalog: [], syncedAt: null, error: null };
 }
 
+/* ---------- shareable config ----------
+   A config is the portable slice of state — manual headers, the URL scope, and
+   any URL sources (file sources are local, so they're left out). It's packed to
+   a URL-safe base64 string carried in a link fragment, so sharing is entirely
+   client-side: the blob never touches a server. The /i page on the site decodes
+   and previews it; the popup's Import pastes it back. */
+
+export const CONFIG_VERSION = 1;
+export const SHARE_BASE = "https://overhead.metzner.uk/i";
+
+function b64urlEncode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function b64urlDecode(b64) {
+  const bin = atob(b64.replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+// Serialize the shareable slice of state to a URL-safe code.
+export function encodeConfig(state) {
+  const payload = {
+    v: CONFIG_VERSION,
+    urlRegex: state.urlRegex ?? ".*",
+    headers: (state.headers ?? [])
+      .filter((h) => h.name && h.name.trim())
+      .map((h) => ({ name: h.name.trim(), value: h.value ?? "", enabled: h.enabled !== false })),
+    sources: (state.sources ?? [])
+      .filter((s) => s.kind === "url" && s.url && s.url.trim())
+      .map((s) => ({ url: s.url.trim() }))
+  };
+  return b64urlEncode(JSON.stringify(payload));
+}
+
+// Parse a share code (raw, or a full link — anything after the last "#" is used)
+// into { headers, sources, urlRegex }. Throws on a malformed code.
+export function decodeConfig(input) {
+  const code = String(input).trim().split("#").pop().trim();
+  if (!code) throw new Error("No config code found.");
+  let data;
+  try {
+    data = JSON.parse(b64urlDecode(code));
+  } catch {
+    throw new Error("That doesn't look like an Overhead config code.");
+  }
+  if (!data || typeof data !== "object" || !Array.isArray(data.headers)) {
+    throw new Error("Config code is malformed.");
+  }
+  const headers = data.headers
+    .filter((h) => h && typeof h.name === "string" && h.name.trim())
+    .map((h) => ({
+      name: h.name.trim(),
+      value: typeof h.value === "string" ? h.value : "",
+      enabled: h.enabled !== false
+    }));
+  const sources = Array.isArray(data.sources)
+    ? data.sources.filter((s) => s && typeof s.url === "string" && s.url.trim()).map((s) => s.url.trim())
+    : [];
+  const urlRegex = typeof data.urlRegex === "string" ? data.urlRegex : null;
+  return { headers, sources, urlRegex };
+}
+
 const DEFAULT_STATE = {
   urlRegex: DEFAULT_URL_REGEX,
   masterEnabled: true,

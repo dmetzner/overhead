@@ -30,6 +30,16 @@
           </div>
           <h3>Accent</h3>
           <div class="swatches" id="accentSwatches" role="group" aria-label="Accent color"></div>
+          <h3>Config</h3>
+          <div class="cfgrow">
+            <button type="button" class="cfgbtn" id="copyShare">Copy share link</button>
+            <button type="button" class="cfgbtn" id="importToggle" aria-expanded="false">Import…</button>
+          </div>
+          <div class="importbox hidden" id="importBox">
+            <textarea id="importText" rows="3" placeholder="Paste a share link or code" spellcheck="false"></textarea>
+            <button type="button" class="cfgbtn wide" id="importApply">Apply import</button>
+          </div>
+          <p class="cfgstatus" id="cfgStatus" role="status"></p>
         </div>
       </div>
       <label class="switch" title="Toggle all headers">
@@ -139,7 +149,15 @@
       <p id="empty" class="empty hidden">No headers yet. Add one below.</p>
 
       <form id="addForm" class="add">
-        <input type="text" id="newName" placeholder="header name" autocomplete="off" spellcheck="false" />
+        <input
+          type="text"
+          id="newName"
+          placeholder="header name"
+          list="stdHeaders"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <datalist id="stdHeaders"></datalist>
         <input type="text" id="newValue" class="value" placeholder="value" autocomplete="off" spellcheck="false" />
         <button type="submit" title="Add header">+</button>
       </form>

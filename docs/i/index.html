@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#070708" />
+    <meta name="robots" content="noindex" />
+    <link rel="preload" href="/fonts/jetbrains-mono-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070708'/%3E%3Cg fill='%232ee6e6'%3E%3Crect x='14' y='16' width='36' height='10' rx='5'/%3E%3Crect x='14' y='33' width='36' height='6' rx='3' opacity='0.8'/%3E%3Crect x='14' y='44' width='22' height='6' rx='3' opacity='0.5'/%3E%3C/g%3E%3C/svg%3E"
+    />
+    <title>Import a config — Overhead</title>
+    <style>
+      @font-face {
+        font-family: "JetBrains Mono";
+        src: url("/fonts/jetbrains-mono-400-latin.woff2") format("woff2");
+        font-weight: 400;
+        font-display: swap;
+      }
+      :root {
+        --bg: #070708;
+        --panel: #101015;
+        --line: #23232d;
+        --text: #ececf0;
+        --faint: #8a8a95;
+        --cyan: #2ee6e6;
+        --violet: #b06bff;
+        --ok: #3fb27f;
+        --grad: linear-gradient(115deg, var(--cyan), var(--violet));
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 15px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        padding: clamp(1.4rem, 5vw, 3rem);
+      }
+      main { max-width: 620px; margin: 0 auto; }
+      a { color: var(--cyan); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .brand { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; margin-bottom: 2rem; }
+      .brand svg { width: 24px; height: 24px; border-radius: 6px; }
+      .brand a { color: var(--text); }
+      h1 { font-size: clamp(1.4rem, 4vw, 1.9rem); font-weight: 700; letter-spacing: -0.01em; }
+      h1 .g { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .sub { color: var(--faint); margin-top: 0.5rem; font-size: 0.9rem; }
+
+      .panel { margin-top: 1.6rem; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; }
+      .panel .top { padding: 0.7rem 1rem; border-bottom: 1px solid var(--line); font-size: 0.72rem; letter-spacing: 0.06em; color: var(--faint); display: flex; gap: 0.6rem; align-items: center; }
+      .panel .top b { color: var(--text); font-weight: 400; }
+      .meta { margin-left: auto; }
+      ul.hdrs { list-style: none; }
+      ul.hdrs li { display: flex; align-items: baseline; gap: 0.6rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--line); font-size: 0.84rem; }
+      ul.hdrs li:last-child { border-bottom: 0; }
+      ul.hdrs .n { color: var(--cyan); word-break: break-all; }
+      ul.hdrs .v { color: #cfcfd6; word-break: break-all; }
+      ul.hdrs .off { margin-left: auto; color: var(--faint); font-size: 0.68rem; letter-spacing: 0.06em; border: 1px solid var(--line); border-radius: 999px; padding: 0.05rem 0.5rem; }
+      .scope { padding: 0.6rem 1rem; border-bottom: 1px solid var(--line); font-size: 0.78rem; color: var(--faint); }
+      .scope code, ul.hdrs code { color: var(--text); }
+
+      .actions { margin-top: 1.5rem; display: flex; gap: 0.7rem; flex-wrap: wrap; }
+      button, .btn {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        font: inherit; font-size: 0.85rem; cursor: pointer;
+        padding: 0.7rem 1.2rem; border-radius: 10px; border: 1px solid var(--line);
+        background: var(--bg); color: var(--text); text-decoration: none;
+        transition: border-color 0.18s, color 0.18s, transform 0.18s;
+      }
+      button.primary { background: var(--grad); color: #08080a; border-color: transparent; font-weight: 700; }
+      button.primary:hover { transform: translateY(-2px); }
+      .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+      ol.steps { margin: 1.8rem 0 0; padding: 0; list-style: none; counter-reset: s; color: var(--faint); font-size: 0.84rem; }
+      ol.steps li { counter-increment: s; position: relative; padding: 0 0 0.7rem 1.9rem; }
+      ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 1.35rem; height: 1.35rem; border: 1px solid var(--line); border-radius: 6px; display: grid; place-content: center; font-size: 0.7rem; color: var(--cyan); }
+      ol.steps b { color: var(--text); font-weight: 400; }
+
+      .note { margin-top: 1.6rem; font-size: 0.76rem; color: var(--faint); border-left: 2px solid var(--line); padding-left: 0.9rem; line-height: 1.6; }
+      .empty { margin-top: 1.6rem; color: var(--faint); }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <a href="/" aria-label="Overhead home">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <rect width="64" height="64" rx="14" fill="#101015" />
+            <rect x="14" y="16" width="36" height="10" rx="5" fill="#2ee6e6" />
+            <rect x="14" y="33" width="36" height="6" rx="3" fill="#7f9df0" />
+            <rect x="14" y="44" width="22" height="6" rx="3" fill="#b06bff" />
+          </svg>
+        </a>
+        <a href="/">Overhead</a>
+      </div>
+
+      <h1>Import a <span class="g">shared config</span></h1>
+      <p class="sub">Someone shared a set of request headers with you. Here's exactly what's in it — nothing is applied until you import it yourself.</p>
+
+      <div id="preview" class="hidden">
+        <div class="panel">
+          <div class="top">HEADERS <span class="meta" id="count"></span></div>
+          <div class="scope" id="scope"></div>
+          <ul class="hdrs" id="hdrs"></ul>
+        </div>
+
+        <div class="actions">
+          <button class="primary" id="copyCode">Copy config code</button>
+          <a class="btn" href="https://github.com/dmetzner/overhead/releases">Get Overhead</a>
+        </div>
+
+        <ol class="steps">
+          <li><b>Copy the config code</b> above.</li>
+          <li>Open Overhead, click the <b>gear</b>, and under <b>Config</b> choose <b>Import…</b></li>
+          <li><b>Paste</b> the code and hit <b>Apply import</b>.</li>
+        </ol>
+
+        <p class="note">
+          This config travels entirely inside the link — it's never sent to a
+          server. The values above are visible to anyone with the link, so if it
+          carries a token or secret, share it carefully.
+        </p>
+      </div>
+
+      <p id="empty" class="empty hidden">
+        No config found in this link. Ask for a fresh share link, or
+        <a href="/">head to the Overhead page</a>.
+      </p>
+    </main>
+
+    <script>
+      function b64urlDecode(b64) {
+        const bin = atob(b64.replace(/-/g, "+").replace(/_/g, "/"));
+        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+        return new TextDecoder().decode(bytes);
+      }
+
+      const code = decodeURIComponent(location.hash.replace(/^#/, "")).trim();
+      const preview = document.getElementById("preview");
+      const empty = document.getElementById("empty");
+
+      function fail() {
+        preview.classList.add("hidden");
+        empty.classList.remove("hidden");
+      }
+
+      try {
+        if (!code) throw new Error("no code");
+        const data = JSON.parse(b64urlDecode(code));
+        const headers = Array.isArray(data.headers) ? data.headers : [];
+        if (!headers.length && !(Array.isArray(data.sources) && data.sources.length)) throw new Error("empty");
+
+        const list = document.getElementById("hdrs");
+        headers.forEach((h) => {
+          if (!h || typeof h.name !== "string" || !h.name.trim()) return;
+          const li = document.createElement("li");
+          const n = document.createElement("span");
+          n.className = "n";
+          n.textContent = h.name.trim();
+          const v = document.createElement("span");
+          v.className = "v";
+          v.textContent = typeof h.value === "string" && h.value !== "" ? h.value : "(empty)";
+          li.append(n, v);
+          if (h.enabled === false) {
+            const off = document.createElement("span");
+            off.className = "off";
+            off.textContent = "OFF";
+            li.append(off);
+          }
+          list.append(li);
+        });
+
+        (Array.isArray(data.sources) ? data.sources : []).forEach((s) => {
+          if (!s || typeof s.url !== "string" || !s.url.trim()) return;
+          const li = document.createElement("li");
+          const n = document.createElement("span");
+          n.className = "n";
+          n.textContent = "source";
+          const v = document.createElement("span");
+          v.className = "v";
+          v.textContent = s.url.trim();
+          li.append(n, v);
+          list.append(li);
+        });
+
+        const on = headers.filter((h) => h && h.enabled !== false).length;
+        document.getElementById("count").textContent =
+          `${headers.length} header${headers.length === 1 ? "" : "s"}${on < headers.length ? ` · ${on} on` : ""}`;
+
+        const scope = document.getElementById("scope");
+        const rx = typeof data.urlRegex === "string" ? data.urlRegex : ".*";
+        scope.innerHTML = "";
+        scope.append(document.createTextNode("Scope: "));
+        const codeEl = document.createElement("code");
+        codeEl.textContent = rx && rx !== ".*" ? rx : "all URLs";
+        scope.append(codeEl);
+
+        document.getElementById("copyCode").addEventListener("click", async (e) => {
+          try {
+            await navigator.clipboard.writeText(code);
+            e.target.textContent = "Copied ✓";
+            setTimeout(() => (e.target.textContent = "Copy config code"), 1600);
+          } catch {
+            e.target.textContent = "Press Ctrl/Cmd+C";
+          }
+        });
+
+        preview.classList.remove("hidden");
+      } catch {
+        fail();
+      }
+    </script>
+
+    <script data-goatcounter="https://metzner.goatcounter.com/count" async src="/count.js"></script>
+  </body>
+</html>
