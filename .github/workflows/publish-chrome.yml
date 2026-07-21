@@ -8,6 +8,11 @@ name: Publish to Chrome Web Store
 #      generate a refresh token.
 #   3. Add repo secrets: CWS_EXTENSION_ID, CWS_CLIENT_ID, CWS_CLIENT_SECRET,
 #      CWS_REFRESH_TOKEN.
+#
+# Talks to the CWS REST API directly with curl: third-party marketplace actions
+# are resolved at job setup even when their step is `if`-skipped, so a vanished
+# action repo would fail the whole job (this happened with
+# mnao305/chrome-webstore-upload-action on v2.4.0).
 
 on:
   push:
@@ -34,13 +39,35 @@ jobs:
 
       - name: Upload + publish to Chrome Web Store
         if: ${{ env.CWS_EXTENSION_ID != '' }}
-        uses: mnao305/chrome-webstore-upload-action@v3
-        with:
-          file-path: overhead-chrome.zip
-          extension-id: ${{ secrets.CWS_EXTENSION_ID }}
-          client-id: ${{ secrets.CWS_CLIENT_ID }}
-          client-secret: ${{ secrets.CWS_CLIENT_SECRET }}
-          refresh-token: ${{ secrets.CWS_REFRESH_TOKEN }}
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          token=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
+            -d client_id="$CWS_CLIENT_ID" \
+            -d client_secret="$CWS_CLIENT_SECRET" \
+            -d refresh_token="$CWS_REFRESH_TOKEN" \
+            -d grant_type=refresh_token | jq -er .access_token)
+
+          upload=$(curl -fsS -X PUT \
+            -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
+            -T overhead-chrome.zip \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$CWS_EXTENSION_ID")
+          state=$(echo "$upload" | jq -r .uploadState)
+          if [ "$state" != "SUCCESS" ]; then
+            echo "::error::upload failed: $upload"
+            exit 1
+          fi
+
+          publish=$(curl -fsS -X POST \
+            -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$CWS_EXTENSION_ID/publish")
+          echo "$publish" | jq -e '.status | index("OK")' > /dev/null || {
+            echo "::error::publish failed: $publish"
+            exit 1
+          }
 
       - name: Skipped (no CWS secrets)
         if: ${{ env.CWS_EXTENSION_ID == '' }}
