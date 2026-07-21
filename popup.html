@@ -48,6 +48,15 @@
       </label>
     </header>
 
+    <div class="profilebar">
+      <select id="profileSelect" title="Active profile" aria-label="Active profile"></select>
+      <input type="text" id="profRenameInput" class="rename hidden" spellcheck="false" aria-label="Rename profile" />
+      <button type="button" class="pbtn" id="profNew" title="New profile">+</button>
+      <button type="button" class="pbtn" id="profDup" title="Duplicate profile">⧉</button>
+      <button type="button" class="pbtn" id="profRename" title="Rename profile">✎</button>
+      <button type="button" class="pbtn" id="profDel" title="Delete profile">✕</button>
+    </div>
+
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-tab="endpoint">Endpoint</button>
       <button class="tab" role="tab" data-tab="manual">Manual</button>

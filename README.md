@@ -60,6 +60,20 @@ existing name updates its value instead of duplicating. The per-row toggle
 enables/disables one header; the master switch in the header bar disables all
 headers (endpoint + manual) at once.
 
+## Profiles
+
+The bar under the toolbar switches between **named profiles** — each its own set
+of headers, URL scope, and sources. Keep a `staging`, `prod`, and `canary`
+profile and flip between them in one click; only the **active** profile is
+injected. The `＋` / duplicate / rename / ✕ buttons manage them. Global settings
+(theme, accent, the master switch) are shared across all profiles.
+
+State lives under one `storage.sync` key as `{ profiles: [...], activeProfileId }`
+(see `DEFAULT_STATE` in `rules.js`); `activeProfile(state)` resolves the current
+one. Existing single-set installs migrate automatically into a `Default`
+profile on first load — nothing is lost. Importing a shared config (see below)
+lands as a **new** profile rather than merging into the current one.
+
 ## URL regex filter
 
 Scopes which requests get the headers — a

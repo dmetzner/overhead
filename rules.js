@@ -18,12 +18,22 @@ export const ACCENTS = {
 };
 export const DEFAULT_ACCENT = "indigo";
 
-function newId() {
-  return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+function newId(prefix = "s") {
+  return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
 export function newSource(kind) {
   return { id: newId(), kind, url: "", fileName: "", catalog: [], syncedAt: null, error: null };
+}
+
+// A profile is a named, self-contained set: its own headers, URL scope, and
+// sources. Only the active profile is injected. Theme/accent/master are global.
+export function newProfile(name = "New profile") {
+  return { id: newId("p"), name, urlRegex: DEFAULT_URL_REGEX, headers: [], sources: [] };
+}
+
+export function activeProfile(state) {
+  return state.profiles.find((p) => p.id === state.activeProfileId) ?? state.profiles[0];
 }
 
 /* ---------- shareable config ----------
@@ -49,15 +59,17 @@ function b64urlDecode(b64) {
   return new TextDecoder().decode(bytes);
 }
 
-// Serialize the shareable slice of state to a URL-safe code.
+// Serialize the active profile's shareable slice to a URL-safe code.
 export function encodeConfig(state) {
+  const prof = activeProfile(state);
   const payload = {
     v: CONFIG_VERSION,
-    urlRegex: state.urlRegex ?? ".*",
-    headers: (state.headers ?? [])
+    name: prof.name,
+    urlRegex: prof.urlRegex ?? ".*",
+    headers: (prof.headers ?? [])
       .filter((h) => h.name && h.name.trim())
       .map((h) => ({ name: h.name.trim(), value: h.value ?? "", enabled: h.enabled !== false })),
-    sources: (state.sources ?? [])
+    sources: (prof.sources ?? [])
       .filter((s) => s.kind === "url" && s.url && s.url.trim())
       .map((s) => ({ url: s.url.trim() }))
   };
@@ -89,24 +101,56 @@ export function decodeConfig(input) {
     ? data.sources.filter((s) => s && typeof s.url === "string" && s.url.trim()).map((s) => s.url.trim())
     : [];
   const urlRegex = typeof data.urlRegex === "string" ? data.urlRegex : null;
-  return { headers, sources, urlRegex };
+  const name = typeof data.name === "string" && data.name.trim() ? data.name.trim() : "Shared config";
+  return { name, headers, sources, urlRegex };
 }
 
+// Global state holds appearance + which profile is active; each profile owns the
+// headers, URL scope, and sources. See newProfile().
 const DEFAULT_STATE = {
-  urlRegex: DEFAULT_URL_REGEX,
   masterEnabled: true,
   activeTab: "endpoint", // endpoint | manual
   theme: "system", // system | light | dark
   accent: DEFAULT_ACCENT, // key into ACCENTS
-  headers: [],
-  // Independent header sources - each fetched/imported on its own, all merged into one list.
-  // kind: "url" (fetched on refresh) | "file" (imported once via file picker, re-import to update).
-  sources: [] // [{ id, kind, url, fileName, catalog: [{ name, value, active }], syncedAt, error }]
+  activeProfileId: null,
+  profiles: [] // [{ id, name, urlRegex, headers: [{name,value,enabled}], sources: [...] }]
 };
 
 export async function loadState() {
   const stored = await browser.storage.sync.get(STORAGE_KEY);
-  return { ...DEFAULT_STATE, ...(stored[STORAGE_KEY] ?? {}) };
+  const raw = stored[STORAGE_KEY] ?? {};
+  const state = { ...DEFAULT_STATE, ...raw };
+
+  // Migrate the pre-profiles flat shape ({ headers, urlRegex, sources }) into a
+  // single "Default" profile.
+  if (!Array.isArray(state.profiles) || state.profiles.length === 0) {
+    state.profiles = [
+      {
+        id: newId("p"),
+        name: "Default",
+        urlRegex: typeof raw.urlRegex === "string" ? raw.urlRegex : DEFAULT_URL_REGEX,
+        headers: Array.isArray(raw.headers) ? raw.headers : [],
+        sources: Array.isArray(raw.sources) ? raw.sources : []
+      }
+    ];
+  }
+  // Defensive: guarantee every profile has all fields.
+  state.profiles = state.profiles.map((p) => ({
+    id: p.id || newId("p"),
+    name: typeof p.name === "string" && p.name.trim() ? p.name : "Profile",
+    urlRegex: typeof p.urlRegex === "string" ? p.urlRegex : DEFAULT_URL_REGEX,
+    headers: Array.isArray(p.headers) ? p.headers : [],
+    sources: Array.isArray(p.sources) ? p.sources : []
+  }));
+  // Drop legacy top-level fields now that they live inside the profile.
+  delete state.headers;
+  delete state.urlRegex;
+  delete state.sources;
+  // Resolve the active profile.
+  if (!state.activeProfileId || !state.profiles.some((p) => p.id === state.activeProfileId)) {
+    state.activeProfileId = state.profiles[0].id;
+  }
+  return state;
 }
 
 export async function saveState(state) {
@@ -162,11 +206,12 @@ export function mergeCatalog(prevHeaders, freshHeaders) {
 
 function activeHeaders(state) {
   if (!state.masterEnabled) return [];
-  const fromSources = (state.sources ?? [])
+  const prof = activeProfile(state);
+  const fromSources = (prof.sources ?? [])
     .flatMap((s) => s.catalog ?? [])
     .filter((h) => h.active && h.name.trim() !== "")
     .map((h) => ({ name: h.name.trim(), value: h.value ?? "1" }));
-  const manual = state.headers
+  const manual = (prof.headers ?? [])
     .filter((h) => h.enabled && h.name.trim() !== "")
     .map((h) => ({ name: h.name.trim(), value: (h.value ?? "").trim() }));
 
@@ -198,7 +243,7 @@ export async function applyRules(state) {
             priority: 1,
             action: { type: "modifyHeaders", requestHeaders },
             condition: {
-              regexFilter: state.urlRegex?.trim() || DEFAULT_URL_REGEX,
+              regexFilter: activeProfile(state).urlRegex?.trim() || DEFAULT_URL_REGEX,
               resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "other"]
             }
           }
