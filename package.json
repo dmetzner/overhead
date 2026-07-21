@@ -5,6 +5,12 @@
   "type": "module",
   "description": "Browser extension that injects HTTP request headers.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check": "biome check . && node --test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.1"
   }
 }

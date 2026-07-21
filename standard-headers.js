@@ -91,7 +91,7 @@ export const STANDARD_HEADERS = [
   { name: "X-CSRF-Token", example: "<token>" },
   { name: "X-HTTP-Method-Override", example: "PATCH" },
   { name: "X-Request-ID", example: "<uuid>" },
-  { name: "X-Correlation-ID", example: "<uuid>" }
+  { name: "X-Correlation-ID", example: "<uuid>" },
 ];
 
 // name (lowercased) -> entry, for quick lookup when the user types/picks a name.

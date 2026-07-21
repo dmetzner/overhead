@@ -16,6 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Lint + format (Biome)
+        run: npx --yes @biomejs/biome@2.5.1 ci .
       - name: Syntax check
         run: node --check rules.js && node --check popup.js && node --check sw.js && node --check standard-headers.js
       - name: Tests

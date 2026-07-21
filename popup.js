@@ -1,19 +1,19 @@
 import {
-  loadState,
-  saveState,
-  fetchCatalog,
-  normalizeCatalog,
-  mergeCatalog,
-  newSource,
-  newProfile,
-  activeProfile,
   ACCENTS,
+  activeProfile,
   DEFAULT_ACCENT,
-  encodeConfig,
   decodeConfig,
-  SHARE_BASE
+  encodeConfig,
+  fetchCatalog,
+  loadState,
+  mergeCatalog,
+  newProfile,
+  newSource,
+  normalizeCatalog,
+  SHARE_BASE,
+  saveState,
 } from "./rules.js";
-import { STANDARD_HEADERS, HEADER_BY_NAME } from "./standard-headers.js";
+import { HEADER_BY_NAME, STANDARD_HEADERS } from "./standard-headers.js";
 
 const api = globalThis.browser ?? globalThis.chrome;
 
@@ -23,7 +23,7 @@ const els = {
   tabs: document.querySelectorAll(".tab"),
   panes: {
     endpoint: document.getElementById("pane-endpoint"),
-    manual: document.getElementById("pane-manual")
+    manual: document.getElementById("pane-manual"),
   },
   urlRegex: document.getElementById("urlRegex"),
   urlRegexErr: document.getElementById("urlRegexErr"),
@@ -66,7 +66,7 @@ const els = {
   profNew: document.getElementById("profNew"),
   profDup: document.getElementById("profDup"),
   profRename: document.getElementById("profRename"),
-  profDel: document.getElementById("profDel")
+  profDel: document.getElementById("profDel"),
 };
 
 let state;
@@ -84,7 +84,9 @@ async function persist() {
 }
 
 function allEntries() {
-  return prof().sources.flatMap((s) => (s.catalog ?? []).map((h, i) => ({ ...h, sourceId: s.id, i })));
+  return prof().sources.flatMap((s) =>
+    (s.catalog ?? []).map((h, i) => ({ ...h, sourceId: s.id, i })),
+  );
 }
 
 function makeDeleteButton(title, onDelete) {
@@ -147,7 +149,7 @@ function openFilePicker(sourceId) {
 
 function setStatus(text, kind) {
   els.status.textContent = text || "";
-  els.status.className = "status" + (kind ? " " + kind : "");
+  els.status.className = `status${kind ? ` ${kind}` : ""}`;
 }
 
 function syncTime(iso) {
@@ -190,7 +192,7 @@ async function doRefreshAll() {
   const total = allEntries().length;
   setStatus(
     `${total} headers from ${prof().sources.length} source(s)${failed ? ` · ${failed} failed` : ""}`,
-    failed ? "error" : "ok"
+    failed ? "error" : "ok",
   );
   render();
 }
@@ -220,7 +222,7 @@ function renderSources() {
     if (s.kind === "file") {
       const label = document.createElement("span");
       label.className = "name mono";
-      label.textContent = "📄 " + (s.fileName || "(no file)");
+      label.textContent = `📄 ${s.fileName || "(no file)"}`;
       main.append(label);
 
       const reimport = document.createElement("button");
@@ -233,7 +235,7 @@ function renderSources() {
       main.append(
         makeEditInput("name", s.url, "https://…/api/headers", (v) => {
           prof().sources[i].url = v;
-        })
+        }),
       );
     }
 
@@ -266,7 +268,7 @@ function renderCatalog() {
     if (q && !h.name.toLowerCase().includes(q)) return;
     const source = prof().sources.find((s) => s.id === h.sourceId);
     const li = document.createElement("li");
-    li.className = "row" + (h.active ? "" : " off");
+    li.className = `row${h.active ? "" : " off"}`;
 
     const toggle = document.createElement("label");
     toggle.className = "switch";
@@ -298,7 +300,11 @@ function renderCatalog() {
       kv.append(origin);
     }
 
-    li.append(toggle, kv, makeDeleteButton("Remove", () => source.catalog.splice(h.i, 1)));
+    li.append(
+      toggle,
+      kv,
+      makeDeleteButton("Remove", () => source.catalog.splice(h.i, 1)),
+    );
     els.catalogList.append(li);
   });
 }
@@ -336,7 +342,7 @@ function renderManual() {
 
   prof().headers.forEach((h, i) => {
     const li = document.createElement("li");
-    li.className = "row" + (h.enabled ? "" : " off");
+    li.className = `row${h.enabled ? "" : " off"}`;
 
     const toggle = document.createElement("label");
     toggle.className = "switch";
@@ -362,7 +368,11 @@ function renderManual() {
     });
     kv.append(name, val);
 
-    li.append(toggle, kv, makeDeleteButton("Remove", () => prof().headers.splice(i, 1)));
+    li.append(
+      toggle,
+      kv,
+      makeDeleteButton("Remove", () => prof().headers.splice(i, 1)),
+    );
     els.list.append(li);
   });
 }
@@ -453,22 +463,22 @@ function buildSwatches() {
 }
 
 function renderAppearance() {
-  els.themeSeg.querySelectorAll("button").forEach((b) =>
-    b.setAttribute("aria-pressed", String(b.dataset.theme === state.theme))
-  );
-  els.accentSwatches.querySelectorAll(".swatch").forEach((b) =>
-    b.setAttribute("aria-pressed", String(b.dataset.accent === state.accent))
-  );
+  for (const b of els.themeSeg.querySelectorAll("button")) {
+    b.setAttribute("aria-pressed", String(b.dataset.theme === state.theme));
+  }
+  for (const b of els.accentSwatches.querySelectorAll(".swatch")) {
+    b.setAttribute("aria-pressed", String(b.dataset.accent === state.accent));
+  }
 }
 
-els.themeSeg.querySelectorAll("button").forEach((b) =>
+for (const b of els.themeSeg.querySelectorAll("button")) {
   b.addEventListener("click", () => {
     state.theme = b.dataset.theme;
     applyAppearance();
     renderAppearance();
     persist();
-  })
-);
+  });
+}
 
 els.settingsBtn.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -487,7 +497,7 @@ document.addEventListener("click", (e) => {
 
 function setCfgStatus(text, kind) {
   els.cfgStatus.textContent = text || "";
-  els.cfgStatus.className = "cfgstatus" + (kind ? " " + kind : "");
+  els.cfgStatus.className = `cfgstatus${kind ? ` ${kind}` : ""}`;
 }
 
 els.copyShare.addEventListener("click", async () => {
@@ -543,11 +553,16 @@ els.importApply.addEventListener("click", () => {
   els.importBox.classList.add("hidden");
   els.importToggle.setAttribute("aria-expanded", "false");
   const n = p.headers.length;
-  const risky = p.headers.some((h) => /^(authorization|cookie|proxy-authorization|x-forwarded-for)$/i.test(h.name)) || p.urlRegex === ".*";
+  const risky =
+    p.headers.some((h) =>
+      /^(authorization|cookie|proxy-authorization|x-forwarded-for)$/i.test(h.name),
+    ) || p.urlRegex === ".*";
   setCfgStatus(
     `Added profile "${p.name}" (${n} header${n === 1 ? "" : "s"}). ` +
-      (risky ? "Review it before switching — broad scope or credential headers." : "Switch to it in the bar above."),
-    "ok"
+      (risky
+        ? "Review it before switching — broad scope or credential headers."
+        : "Switch to it in the bar above."),
+    "ok",
   );
   persist();
 });
@@ -632,12 +647,12 @@ els.profDel.addEventListener("click", () => {
 
 /* ---------- events ---------- */
 
-els.tabs.forEach((t) =>
+for (const t of els.tabs) {
   t.addEventListener("click", () => {
     state.activeTab = t.dataset.tab;
     persist();
-  })
-);
+  });
+}
 
 els.master.addEventListener("change", () => {
   state.masterEnabled = els.master.checked;
@@ -650,7 +665,7 @@ els.urlRegex.addEventListener("input", () => {
   try {
     new RegExp(value);
   } catch (err) {
-    els.urlRegexErr.textContent = "Invalid regex: " + err.message;
+    els.urlRegexErr.textContent = `Invalid regex: ${err.message}`;
     els.urlRegexErr.classList.remove("hidden");
     els.urlRegex.classList.add("bad");
     return; // don't persist a broken pattern — DNR would reject the whole rule
@@ -731,6 +746,9 @@ els.form.addEventListener("submit", (e) => {
   }
   render();
   if (IN_TAB) {
-    setStatus("Opened as a tab — Firefox can't show the file dialog from the popup. Pick your file here.", "");
+    setStatus(
+      "Opened as a tab — Firefox can't show the file dialog from the popup. Pick your file here.",
+      "",
+    );
   }
 })();

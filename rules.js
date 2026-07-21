@@ -18,7 +18,7 @@ export const ACCENTS = {
   teal: { base: "#14b8a6", hi: "#2dd4bf" },
   green: { base: "#22c55e", hi: "#4ade80" },
   amber: { base: "#f59e0b", hi: "#fbbf24" },
-  rose: { base: "#f43f5e", hi: "#fb7185" }
+  rose: { base: "#f43f5e", hi: "#fb7185" },
 };
 export const DEFAULT_ACCENT = "indigo";
 
@@ -49,8 +49,12 @@ export function injectionSig(state) {
     state.masterEnabled,
     state.accent,
     p.urlRegex,
-    (p.headers ?? []).filter((h) => h.enabled && h.name.trim()).map((h) => [h.name.trim(), h.value]),
-    (p.sources ?? []).flatMap((s) => (s.catalog ?? []).filter((h) => h.active).map((h) => [h.name, h.value]))
+    (p.headers ?? [])
+      .filter((h) => h.enabled && h.name.trim())
+      .map((h) => [h.name.trim(), h.value]),
+    (p.sources ?? []).flatMap((s) =>
+      (s.catalog ?? []).filter((h) => h.active).map((h) => [h.name, h.value]),
+    ),
   ]);
 }
 
@@ -85,11 +89,11 @@ export function encodeConfig(state) {
     name: prof.name,
     urlRegex: prof.urlRegex ?? ".*",
     headers: (prof.headers ?? [])
-      .filter((h) => h.name && h.name.trim())
+      .filter((h) => h.name?.trim())
       .map((h) => ({ name: h.name.trim(), value: h.value ?? "", enabled: h.enabled !== false })),
     sources: (prof.sources ?? [])
       .filter((s) => s.kind === "url" && s.url && s.url.trim())
-      .map((s) => ({ url: s.url.trim() }))
+      .map((s) => ({ url: s.url.trim() })),
   };
   return b64urlEncode(JSON.stringify(payload));
 }
@@ -116,13 +120,16 @@ export function decodeConfig(input) {
     .map((h) => ({
       name: h.name.trim(),
       value: typeof h.value === "string" ? h.value : "",
-      enabled: h.enabled !== false
+      enabled: h.enabled !== false,
     }));
   const sources = Array.isArray(data.sources)
-    ? data.sources.filter((s) => s && typeof s.url === "string" && s.url.trim()).map((s) => s.url.trim())
+    ? data.sources
+        .filter((s) => s && typeof s.url === "string" && s.url.trim())
+        .map((s) => s.url.trim())
     : [];
   const urlRegex = typeof data.urlRegex === "string" ? data.urlRegex : null;
-  const name = typeof data.name === "string" && data.name.trim() ? data.name.trim() : "Shared config";
+  const name =
+    typeof data.name === "string" && data.name.trim() ? data.name.trim() : "Shared config";
   return { name, headers, sources, urlRegex };
 }
 
@@ -134,7 +141,7 @@ const DEFAULT_STATE = {
   theme: "system", // system | light | dark
   accent: DEFAULT_ACCENT, // key into ACCENTS
   activeProfileId: null,
-  profiles: [] // [{ id, name, urlRegex, headers: [{name,value,enabled}], sources: [...] }]
+  profiles: [], // [{ id, name, urlRegex, headers: [{name,value,enabled}], sources: [...] }]
 };
 
 export async function loadState() {
@@ -151,8 +158,8 @@ export async function loadState() {
         name: "Default",
         urlRegex: typeof raw.urlRegex === "string" ? raw.urlRegex : DEFAULT_URL_REGEX,
         headers: Array.isArray(raw.headers) ? raw.headers : [],
-        sources: Array.isArray(raw.sources) ? raw.sources : []
-      }
+        sources: Array.isArray(raw.sources) ? raw.sources : [],
+      },
     ];
   }
   // Defensive: guarantee every profile has all fields.
@@ -161,7 +168,7 @@ export async function loadState() {
     name: typeof p.name === "string" && p.name.trim() ? p.name : "Profile",
     urlRegex: typeof p.urlRegex === "string" ? p.urlRegex : DEFAULT_URL_REGEX,
     headers: Array.isArray(p.headers) ? p.headers : [],
-    sources: Array.isArray(p.sources) ? p.sources : []
+    sources: Array.isArray(p.sources) ? p.sources : [],
   }));
   // Drop legacy top-level fields now that they live inside the profile.
   delete state.headers;
@@ -178,7 +185,11 @@ export async function loadState() {
   for (const p of state.profiles) {
     p.sources = (p.sources ?? []).map((s) => ({
       ...s,
-      catalog: Array.isArray(catalogs[s.id]) ? catalogs[s.id] : Array.isArray(s.catalog) ? s.catalog : []
+      catalog: Array.isArray(catalogs[s.id])
+        ? catalogs[s.id]
+        : Array.isArray(s.catalog)
+          ? s.catalog
+          : [],
     }));
   }
   return state;
@@ -194,10 +205,10 @@ export async function saveState(state) {
     profiles: state.profiles.map((p) => ({
       ...p,
       sources: (p.sources ?? []).map(({ catalog, ...rest }) => {
-        if (catalog && catalog.length) catalogs[rest.id] = catalog;
+        if (catalog?.length) catalogs[rest.id] = catalog;
         return rest;
-      })
-    }))
+      }),
+    })),
   };
   try {
     await browser.storage.local.set({ [CATALOG_KEY]: catalogs });
@@ -276,7 +287,7 @@ function toRequestHeaders(state) {
   return activeHeaders(state).map((h) => ({
     header: h.name,
     operation: "set",
-    value: h.value
+    value: h.value,
   }));
 }
 
@@ -295,9 +306,9 @@ export async function applyRules(state) {
             action: { type: "modifyHeaders", requestHeaders },
             condition: {
               regexFilter: activeProfile(state).urlRegex?.trim() || DEFAULT_URL_REGEX,
-              resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "other"]
-            }
-          }
+              resourceTypes: ["main_frame", "sub_frame", "xmlhttprequest", "other"],
+            },
+          },
         ];
 
   await browser.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
