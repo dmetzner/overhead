@@ -78,8 +78,9 @@ function prof() {
 }
 
 async function persist() {
-  await saveState(state);
+  const res = await saveState(state);
   render();
+  if (res && !res.ok) setStatus(`Couldn't save: ${res.error}`, "error");
 }
 
 function allEntries() {
@@ -272,6 +273,7 @@ function renderCatalog() {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = !!h.active;
+    cb.setAttribute("aria-label", `Send header ${h.name}`);
     cb.addEventListener("change", () => {
       source.catalog[h.i].active = cb.checked;
       persist();
@@ -341,6 +343,7 @@ function renderManual() {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = h.enabled;
+    cb.setAttribute("aria-label", `Send header ${h.name || "(unnamed)"}`);
     cb.addEventListener("change", () => {
       prof().headers[i].enabled = cb.checked;
       persist();
@@ -382,6 +385,7 @@ function renderProfiles() {
 function render() {
   renderProfiles();
   els.master.checked = state.masterEnabled;
+  document.body.classList.toggle("master-off", !state.masterEnabled);
   if (document.activeElement !== els.urlRegex) els.urlRegex.value = prof().urlRegex;
 
   const n = activeCount();
@@ -490,7 +494,7 @@ els.copyShare.addEventListener("click", async () => {
   const link = `${SHARE_BASE}#${encodeConfig(state)}`;
   try {
     await navigator.clipboard.writeText(link);
-    setCfgStatus("Share link copied ✓", "ok");
+    setCfgStatus("Link copied ✓ — it carries your header values, share with care.", "ok");
   } catch {
     // clipboard blocked — surface the link so it can be copied by hand
     els.importBox.classList.remove("hidden");
@@ -531,14 +535,20 @@ els.importApply.addEventListener("click", () => {
     return s;
   });
   if (cfg.urlRegex != null) p.urlRegex = cfg.urlRegex;
+  // Land it inactive — activating (and thus injecting attacker-chosen headers)
+  // must be a deliberate switch in the profile bar, not a side effect of Apply.
   state.profiles.push(p);
-  state.activeProfileId = p.id;
 
   els.importText.value = "";
   els.importBox.classList.add("hidden");
   els.importToggle.setAttribute("aria-expanded", "false");
   const n = p.headers.length;
-  setCfgStatus(`Imported "${p.name}" — ${n} header${n === 1 ? "" : "s"} ✓`, "ok");
+  const risky = p.headers.some((h) => /^(authorization|cookie|proxy-authorization|x-forwarded-for)$/i.test(h.name)) || p.urlRegex === ".*";
+  setCfgStatus(
+    `Added profile "${p.name}" (${n} header${n === 1 ? "" : "s"}). ` +
+      (risky ? "Review it before switching — broad scope or credential headers." : "Switch to it in the bar above."),
+    "ok"
+  );
   persist();
 });
 
@@ -594,8 +604,26 @@ els.profRenameInput.addEventListener("keydown", (e) => {
 });
 els.profRenameInput.addEventListener("blur", () => endRename(true));
 
+let delArmed = false;
+function disarmDelete() {
+  delArmed = false;
+  els.profDel.textContent = "✕";
+  els.profDel.title = "Delete profile";
+  els.profDel.classList.remove("armed");
+}
 els.profDel.addEventListener("click", () => {
   if (state.profiles.length <= 1) return;
+  // Two-step: a whole profile is destroyed with no undo, so the first click
+  // arms and the second (within 3 s) confirms.
+  if (!delArmed) {
+    delArmed = true;
+    els.profDel.textContent = "?";
+    els.profDel.title = "Click again to delete this profile";
+    els.profDel.classList.add("armed");
+    setTimeout(disarmDelete, 3000);
+    return;
+  }
+  disarmDelete();
   const i = state.profiles.findIndex((p) => p.id === state.activeProfileId);
   state.profiles.splice(i, 1);
   state.activeProfileId = state.profiles[Math.max(0, i - 1)].id;
@@ -616,6 +644,7 @@ els.master.addEventListener("change", () => {
   persist();
 });
 
+let regexSaveTimer;
 els.urlRegex.addEventListener("input", () => {
   const value = els.urlRegex.value.trim();
   try {
@@ -629,7 +658,10 @@ els.urlRegex.addEventListener("input", () => {
   els.urlRegexErr.classList.add("hidden");
   els.urlRegex.classList.remove("bad");
   prof().urlRegex = value;
-  persist();
+  // Validate live, but debounce the storage write + render (sync has a
+  // write-rate limit and re-rendering every keystroke is wasteful).
+  clearTimeout(regexSaveTimer);
+  regexSaveTimer = setTimeout(() => persist(), 300);
 });
 
 function addUrlSource() {

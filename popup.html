@@ -16,6 +16,7 @@
           id="settingsBtn"
           type="button"
           title="Theme &amp; accent"
+          aria-label="Settings: theme, accent, share"
           aria-expanded="false"
           aria-controls="settingsPopover"
         >
@@ -43,7 +44,7 @@
         </div>
       </div>
       <label class="switch" title="Toggle all headers">
-        <input type="checkbox" id="master" />
+        <input type="checkbox" id="master" aria-label="Send all headers (master switch)" />
         <span class="slider"></span>
       </label>
     </header>
@@ -51,15 +52,15 @@
     <div class="profilebar">
       <select id="profileSelect" title="Active profile" aria-label="Active profile"></select>
       <input type="text" id="profRenameInput" class="rename hidden" spellcheck="false" aria-label="Rename profile" />
-      <button type="button" class="pbtn" id="profNew" title="New profile">+</button>
-      <button type="button" class="pbtn" id="profDup" title="Duplicate profile">⧉</button>
-      <button type="button" class="pbtn" id="profRename" title="Rename profile">✎</button>
-      <button type="button" class="pbtn" id="profDel" title="Delete profile">✕</button>
+      <button type="button" class="pbtn" id="profNew" title="New profile" aria-label="New profile">+</button>
+      <button type="button" class="pbtn" id="profDup" title="Duplicate profile" aria-label="Duplicate profile">⧉</button>
+      <button type="button" class="pbtn" id="profRename" title="Rename profile" aria-label="Rename profile">✎</button>
+      <button type="button" class="pbtn" id="profDel" title="Delete profile" aria-label="Delete profile">✕</button>
     </div>
 
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" data-tab="endpoint">Endpoint</button>
-      <button class="tab" role="tab" data-tab="manual">Manual</button>
+      <button class="tab" role="tab" id="tab-endpoint" aria-controls="pane-endpoint" data-tab="endpoint">Endpoint</button>
+      <button class="tab" role="tab" id="tab-manual" aria-controls="pane-manual" data-tab="manual">Manual</button>
     </div>
 
     <section class="scope">
@@ -84,7 +85,7 @@
     </section>
 
     <!-- ENDPOINT TAB -->
-    <div class="pane" id="pane-endpoint">
+    <div class="pane" id="pane-endpoint" role="tabpanel" aria-labelledby="tab-endpoint">
       <div class="labelrow endpointlabel">
         <label>Sources</label>
         <button type="button" class="info" id="endpointInfo" aria-label="What is this?" aria-expanded="false">i</button>
@@ -153,7 +154,7 @@
     </div>
 
     <!-- MANUAL TAB -->
-    <div class="pane hidden" id="pane-manual">
+    <div class="pane hidden" id="pane-manual" role="tabpanel" aria-labelledby="tab-manual">
       <ul id="headerList" class="rows"></ul>
       <p id="empty" class="empty hidden">No headers yet. Add one below.</p>
 

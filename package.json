@@ -1,0 +1,10 @@
+{
+  "name": "overhead",
+  "version": "2.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser extension that injects HTTP request headers.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

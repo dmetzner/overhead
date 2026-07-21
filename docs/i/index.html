@@ -81,6 +81,7 @@
 
       .note { margin-top: 1.6rem; font-size: 0.76rem; color: var(--faint); border-left: 2px solid var(--line); padding-left: 0.9rem; line-height: 1.6; }
       .empty { margin-top: 1.6rem; color: var(--faint); }
+      #codeField { width: 100%; margin-top: 0.8rem; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font: inherit; font-size: 0.76rem; padding: 0.6rem 0.8rem; resize: vertical; word-break: break-all; }
       .hidden { display: none; }
     </style>
   </head>
@@ -112,11 +113,12 @@
           <button class="primary" id="copyCode">Copy config code</button>
           <a class="btn" href="https://github.com/dmetzner/overhead/releases">Get Overhead</a>
         </div>
+        <textarea id="codeField" class="hidden" readonly rows="2" aria-label="Config code"></textarea>
 
         <ol class="steps">
           <li><b>Copy the config code</b> above.</li>
           <li>Open Overhead, click the <b>gear</b>, and under <b>Config</b> choose <b>Import…</b></li>
-          <li><b>Paste</b> the code and hit <b>Apply import</b>.</li>
+          <li><b>Paste</b> the code and hit <b>Apply import</b>. It's added as a <b>new profile</b> — review it, then switch to it in the bar.</li>
         </ol>
 
         <p class="note">
@@ -151,6 +153,10 @@
       try {
         if (!code) throw new Error("no code");
         const data = JSON.parse(b64urlDecode(code));
+        if (typeof data.v === "number" && data.v > 1) {
+          empty.textContent = "This link was made by a newer version of Overhead — update the extension to import it.";
+          throw new Error("version");
+        }
         const headers = Array.isArray(data.headers) ? data.headers : [];
         if (!headers.length && !(Array.isArray(data.sources) && data.sources.length)) throw new Error("empty");
 
@@ -199,13 +205,19 @@
         codeEl.textContent = rx && rx !== ".*" ? rx : "all URLs";
         scope.append(codeEl);
 
+        const field = document.getElementById("codeField");
+        field.value = code;
         document.getElementById("copyCode").addEventListener("click", async (e) => {
           try {
             await navigator.clipboard.writeText(code);
             e.target.textContent = "Copied ✓";
             setTimeout(() => (e.target.textContent = "Copy config code"), 1600);
           } catch {
-            e.target.textContent = "Press Ctrl/Cmd+C";
+            // Clipboard blocked — reveal the code and select it so Ctrl/Cmd+C works.
+            field.classList.remove("hidden");
+            field.focus();
+            field.select();
+            e.target.textContent = "Copy it above (Ctrl/Cmd+C)";
           }
         });
 
