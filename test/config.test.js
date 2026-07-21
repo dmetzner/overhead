@@ -1,6 +1,6 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { encodeConfig, decodeConfig, CONFIG_VERSION } from "../rules.js";
+import test from "node:test";
+import { CONFIG_VERSION, decodeConfig, encodeConfig } from "../rules.js";
 
 test("config round-trip preserves headers, scope, url sources, name", () => {
   const state = {
@@ -12,21 +12,21 @@ test("config round-trip preserves headers, scope, url sources, name", () => {
         urlRegex: "(shop)\\.dev",
         headers: [
           { name: "X-Env", value: "staging", enabled: true },
-          { name: "X-Off", value: "1", enabled: false }
+          { name: "X-Off", value: "1", enabled: false },
         ],
         sources: [
           { id: "s1", kind: "url", url: "https://x.dev/h", catalog: [] },
-          { id: "s2", kind: "file", url: "", fileName: "f.json", catalog: [] }
-        ]
-      }
-    ]
+          { id: "s2", kind: "file", url: "", fileName: "f.json", catalog: [] },
+        ],
+      },
+    ],
   };
   const back = decodeConfig(encodeConfig(state));
   assert.equal(back.name, "Staging");
   assert.equal(back.urlRegex, "(shop)\\.dev");
   assert.deepEqual(back.headers, [
     { name: "X-Env", value: "staging", enabled: true },
-    { name: "X-Off", value: "1", enabled: false }
+    { name: "X-Off", value: "1", enabled: false },
   ]);
   assert.deepEqual(back.sources, ["https://x.dev/h"]); // file source omitted, url kept
 });
@@ -34,7 +34,15 @@ test("config round-trip preserves headers, scope, url sources, name", () => {
 test("decodeConfig accepts a full share link (anything after last #)", () => {
   const state = {
     activeProfileId: "p",
-    profiles: [{ id: "p", name: "n", urlRegex: ".*", headers: [{ name: "A", value: "1", enabled: true }], sources: [] }]
+    profiles: [
+      {
+        id: "p",
+        name: "n",
+        urlRegex: ".*",
+        headers: [{ name: "A", value: "1", enabled: true }],
+        sources: [],
+      },
+    ],
   };
   const code = encodeConfig(state);
   const back = decodeConfig(`https://overhead.metzner.uk/i#${code}`);
@@ -43,6 +51,8 @@ test("decodeConfig accepts a full share link (anything after last #)", () => {
 
 test("decodeConfig rejects garbage and future versions", () => {
   assert.throws(() => decodeConfig("not valid base64 %%%"));
-  const newer = Buffer.from(JSON.stringify({ v: CONFIG_VERSION + 1, headers: [] })).toString("base64url");
+  const newer = Buffer.from(JSON.stringify({ v: CONFIG_VERSION + 1, headers: [] })).toString(
+    "base64url",
+  );
   assert.throws(() => decodeConfig(newer), /newer version/);
 });

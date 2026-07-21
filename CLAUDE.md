@@ -39,7 +39,15 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
 
 ## Commands
 ```bash
-node --test           # run the suite
-node --check *.js      # syntax
+node --test                              # run the suite
+npx @biomejs/biome check .               # lint + format check (CI gate)
+npx @biomejs/biome check --write .       # apply fixes
 ```
+Biome lints JS/CSS/JSON only — `.html` and the vendored `docs/count.js` are
+excluded (see `biome.json`). CI (`ci.yml`) runs Biome + syntax + tests on every
+push/PR; `pack.yml` asserts the tag matches `manifest.json`.
+
+Chrome Web Store publish (`publish-chrome.yml`) is wired but dormant until the
+four `CWS_*` secrets exist (see backlog story 34 / CHANGELOG). Firefox signs
+automatically via AMO.
 Don't commit unless asked — Daniel reviews diffs.

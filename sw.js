@@ -1,4 +1,4 @@
-import { loadState, applyRules, injectionSig, STORAGE_KEY, CATALOG_KEY } from "./rules.js";
+import { applyRules, CATALOG_KEY, injectionSig, loadState, STORAGE_KEY } from "./rules.js";
 
 // Firefox exposes the promise-based WebExtension APIs on `browser`; Chrome (121+)
 // exposes the same promise API on `chrome`. `browser ?? chrome` picks the
@@ -23,5 +23,6 @@ browser.runtime.onStartup.addListener(sync);
 // Config lives in storage.sync; fetched catalogs (incl. their on/off state) in
 // storage.local — watch both so endpoint toggles still re-apply.
 browser.storage.onChanged.addListener((changes, area) => {
-  if ((area === "sync" && changes[STORAGE_KEY]) || (area === "local" && changes[CATALOG_KEY])) sync();
+  if ((area === "sync" && changes[STORAGE_KEY]) || (area === "local" && changes[CATALOG_KEY]))
+    sync();
 });

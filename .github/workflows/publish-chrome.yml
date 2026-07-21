@@ -1,0 +1,47 @@
+name: Publish to Chrome Web Store
+
+# Publishes the Chrome zip to the Web Store on a version tag — but only once the
+# four CWS_* repo secrets exist. Until then every step is skipped, so it never
+# fails a release. See backlog story 34 for the one-time setup Daniel must do:
+#   1. CWS developer account ($5) + publish v1 manually to get the item ID.
+#   2. Google Cloud → enable Chrome Web Store API → OAuth Desktop client →
+#      generate a refresh token.
+#   3. Add repo secrets: CWS_EXTENSION_ID, CWS_CLIENT_ID, CWS_CLIENT_SECRET,
+#      CWS_REFRESH_TOKEN.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Chrome zip
+        if: ${{ env.CWS_EXTENSION_ID != '' }}
+        run: |
+          zip -r "overhead-chrome.zip" \
+            manifest.json sw.js rules.js standard-headers.js popup.html popup.js popup.css icons \
+            -x "*.DS_Store"
+
+      - name: Upload + publish to Chrome Web Store
+        if: ${{ env.CWS_EXTENSION_ID != '' }}
+        uses: mnao305/chrome-webstore-upload-action@v3
+        with:
+          file-path: overhead-chrome.zip
+          extension-id: ${{ secrets.CWS_EXTENSION_ID }}
+          client-id: ${{ secrets.CWS_CLIENT_ID }}
+          client-secret: ${{ secrets.CWS_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CWS_REFRESH_TOKEN }}
+
+      - name: Skipped (no CWS secrets)
+        if: ${{ env.CWS_EXTENSION_ID == '' }}
+        run: echo "CWS_* secrets not configured — skipping Chrome Web Store publish."
