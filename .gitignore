@@ -9,3 +9,6 @@ web-ext-artifacts/
 
 # temp render harnesses
 _*.html
+
+# internal audit/triage notes — not for the public repo
+backlog/

@@ -4,6 +4,10 @@
 const browser = globalThis.browser ?? globalThis.chrome;
 
 export const STORAGE_KEY = "overheadState";
+// Fetched catalogs are a re-fetchable cache and can be large, so they live in
+// storage.local (~5 MB) keyed by source id — keeping the synced config well
+// under storage.sync's ~8 KB per-item cap.
+export const CATALOG_KEY = "overheadCatalogs";
 
 const DEFAULT_URL_REGEX = ".*";
 
@@ -34,6 +38,20 @@ export function newProfile(name = "New profile") {
 
 export function activeProfile(state) {
   return state.profiles.find((p) => p.id === state.activeProfileId) ?? state.profiles[0];
+}
+
+// Compact fingerprint of everything that affects the injected DNR rule (+ badge
+// color). The background script skips rebuilding rules when this is unchanged,
+// so theme/accent-only or tab-only edits don't churn declarativeNetRequest.
+export function injectionSig(state) {
+  const p = activeProfile(state);
+  return JSON.stringify([
+    state.masterEnabled,
+    state.accent,
+    p.urlRegex,
+    (p.headers ?? []).filter((h) => h.enabled && h.name.trim()).map((h) => [h.name.trim(), h.value]),
+    (p.sources ?? []).flatMap((s) => (s.catalog ?? []).filter((h) => h.active).map((h) => [h.name, h.value]))
+  ]);
 }
 
 /* ---------- shareable config ----------
@@ -87,10 +105,13 @@ export function decodeConfig(input) {
   } catch {
     throw new Error("That doesn't look like an Overhead config code.");
   }
-  if (!data || typeof data !== "object" || !Array.isArray(data.headers)) {
+  if (!data || typeof data !== "object") {
     throw new Error("Config code is malformed.");
   }
-  const headers = data.headers
+  if (typeof data.v === "number" && data.v > CONFIG_VERSION) {
+    throw new Error("This share code is from a newer version of Overhead — update to import it.");
+  }
+  const headers = (Array.isArray(data.headers) ? data.headers : [])
     .filter((h) => h && typeof h.name === "string" && h.name.trim())
     .map((h) => ({
       name: h.name.trim(),
@@ -150,11 +171,41 @@ export async function loadState() {
   if (!state.activeProfileId || !state.profiles.some((p) => p.id === state.activeProfileId)) {
     state.activeProfileId = state.profiles[0].id;
   }
+  // Rehydrate catalogs from storage.local (keep any inline catalog from a
+  // pre-split install so the first save can migrate it out of sync).
+  const local = await browser.storage.local.get(CATALOG_KEY);
+  const catalogs = local[CATALOG_KEY] ?? {};
+  for (const p of state.profiles) {
+    p.sources = (p.sources ?? []).map((s) => ({
+      ...s,
+      catalog: Array.isArray(catalogs[s.id]) ? catalogs[s.id] : Array.isArray(s.catalog) ? s.catalog : []
+    }));
+  }
   return state;
 }
 
+// Writes the small config to storage.sync and the bulky catalogs to
+// storage.local. Returns {ok} / {ok:false, error} — callers surface failures
+// instead of the write silently vanishing. See CATALOG_KEY.
 export async function saveState(state) {
-  await browser.storage.sync.set({ [STORAGE_KEY]: state });
+  const catalogs = {};
+  const synced = {
+    ...state,
+    profiles: state.profiles.map((p) => ({
+      ...p,
+      sources: (p.sources ?? []).map(({ catalog, ...rest }) => {
+        if (catalog && catalog.length) catalogs[rest.id] = catalog;
+        return rest;
+      })
+    }))
+  };
+  try {
+    await browser.storage.local.set({ [CATALOG_KEY]: catalogs });
+    await browser.storage.sync.set({ [STORAGE_KEY]: synced });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) };
+  }
 }
 
 // Validate + coerce an endpoint response into catalog rows.

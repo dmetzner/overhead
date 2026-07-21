@@ -83,6 +83,14 @@ multiple hosts: `(shop|admin)\.example\.dev`. Empty or `.*` = everything. An
 invalid pattern is flagged inline and never applied, so a typo can't silently
 disable header injection.
 
+The pattern is validated in the popup with JavaScript's regex engine but applied
+by DNR as **RE2** — a pattern legal in one but not the other passes validation
+then fails closed at DNR (no headers, no error). Stick to the common subset.
+
+Headers are applied to these request types only: `main_frame`, `sub_frame`,
+`xmlhttprequest`, and `other` — so top-level navigations and `fetch`/XHR are
+covered, but script, image, stylesheet, and font subresource requests are not.
+
 ## Theming
 
 The gear in the top bar opens appearance settings: **theme** (System / Light /
@@ -96,20 +104,20 @@ editing those, and add an accent by extending the `ACCENTS` map in `rules.js`.
 ## Sharing configs
 
 The gear's **Config** section shares a setup without exporting JSON by hand.
-**Copy share link** packs the portable slice of your state — the manual
-headers, the URL scope, and any URL sources (local file sources are left out) —
-into a URL-safe code inside a link fragment:
-`https://overhead.metzner.uk/i#<code>`. The data lives entirely in the fragment,
-so **nothing is ever sent to a server** — the [`/i` page](docs/i/index.html) on
-the site decodes and previews it client-side.
+**Copy share link** packs the **active profile** — its headers, URL scope, and
+any URL sources (local file sources are left out) — into a URL-safe code inside
+a link fragment: `https://overhead.metzner.uk/i#<code>`. The data lives entirely
+in the fragment, so **nothing is ever sent to a server** — the
+[`/i` page](docs/i/index.html) on the site decodes and previews it client-side.
 
 A teammate opens the link, sees exactly which headers (and values) it carries,
 copies the code, and pastes it into **Config → Import…** → **Apply import**.
-Import *merges*: matching header names are updated, new ones added, URL sources
-appended, and the scope regex applied. `encodeConfig`/`decodeConfig` in
-`rules.js` own the format (versioned as `CONFIG_VERSION`). Because the values
-are visible to anyone with the link, a link carrying a token or secret should be
-shared with care.
+Import lands the config as a **new, inactive profile** (it never overwrites the
+one you're on); switch to it in the profile bar when you're ready. A warning
+shows if the config carries credential headers or an `.*` scope.
+`encodeConfig`/`decodeConfig` in `rules.js` own the format (versioned as
+`CONFIG_VERSION`, checked on decode). Because the values are visible to anyone
+with the link, a link carrying a token or secret should be shared with care.
 
 ## Install
 
@@ -195,11 +203,14 @@ on Firefox (Chrome shows the dialog fine from the popup directly).
 
 ```
 manifest.json      extension manifest (MV3, Chrome + Firefox)
-rules.js           shared state + DNR rule builder + catalog fetch/validate
+rules.js           shared state + migration + DNR rule builder + config share codec
 standard-headers.js curated request-header list backing the Manual autocomplete
 sw.js              background script — applies rules on install/startup/change
-popup.html/js/css  endpoint + manual header UI
+popup.html/js/css  endpoint + manual + profiles + settings UI
+icons/             extension icon (svg source + 16/48/128 png)
 examples/          sample headers.json to try the Endpoint tab's File import
+docs/              the overhead.metzner.uk site (GitHub Pages): landing + /i importer
+test/              node --test suite (config round-trip, migration, catalog)
 ```
 
 ## Notes

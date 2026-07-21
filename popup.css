@@ -214,6 +214,19 @@ body.tabview { margin: 24px auto; }
 .pbtn:hover { border-color: var(--accent); color: var(--accent); }
 .pbtn:disabled { opacity: 0.4; cursor: default; }
 .pbtn:disabled:hover { border-color: var(--line); color: var(--muted); }
+.pbtn.armed { border-color: var(--danger); color: var(--danger); }
+
+/* keyboard focus is visible on every control (not just the switch) */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent-hi);
+  outline-offset: 2px;
+}
+
+/* master switch off: dim the header lists so it's clear nothing is being sent */
+body.master-off .rows { opacity: 0.45; }
 
 /* tabs */
 .tabs {

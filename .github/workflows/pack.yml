@@ -18,6 +18,15 @@ jobs:
         id: manifest
         run: echo "version=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
 
+      - name: Verify tag matches manifest version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "${{ steps.manifest.outputs.version }}" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match manifest.json version ${{ steps.manifest.outputs.version }}"
+            exit 1
+          fi
+
       # Two builds: the committed manifest is Chrome-canonical (background.service_worker).
       # Firefox has no service_worker support (bug 1573659) and uses an event page, so the
       # Firefox build swaps background to the scripts form — each browser loads warning-free.
