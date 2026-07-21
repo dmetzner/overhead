@@ -3,9 +3,20 @@
 // promise-based namespace on either browser.
 const browser = globalThis.browser ?? globalThis.chrome;
 
-export const STORAGE_KEY = "niceHeaderState";
+export const STORAGE_KEY = "overheadState";
 
 const DEFAULT_URL_REGEX = ".*";
+
+// Accent presets — shared by the popup swatches and the toolbar badge color.
+export const ACCENTS = {
+  indigo: { base: "#6366f1", hi: "#818cf8" },
+  blue: { base: "#3b82f6", hi: "#60a5fa" },
+  teal: { base: "#14b8a6", hi: "#2dd4bf" },
+  green: { base: "#22c55e", hi: "#4ade80" },
+  amber: { base: "#f59e0b", hi: "#fbbf24" },
+  rose: { base: "#f43f5e", hi: "#fb7185" }
+};
+export const DEFAULT_ACCENT = "indigo";
 
 function newId() {
   return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -19,6 +30,8 @@ const DEFAULT_STATE = {
   urlRegex: DEFAULT_URL_REGEX,
   masterEnabled: true,
   activeTab: "endpoint", // endpoint | manual
+  theme: "system", // system | light | dark
+  accent: DEFAULT_ACCENT, // key into ACCENTS
   headers: [],
   // Independent header sources - each fetched/imported on its own, all merged into one list.
   // kind: "url" (fetched on refresh) | "file" (imported once via file picker, re-import to update).
@@ -126,10 +139,11 @@ export async function applyRules(state) {
         ];
 
   await browser.declarativeNetRequest.updateDynamicRules({ removeRuleIds, addRules });
-  await updateBadge(requestHeaders.length);
+  await updateBadge(requestHeaders.length, state.accent);
 }
 
-async function updateBadge(count) {
+async function updateBadge(count, accent) {
+  const acc = ACCENTS[accent] ?? ACCENTS[DEFAULT_ACCENT];
   await browser.action.setBadgeText({ text: count > 0 ? String(count) : "" });
-  await browser.action.setBadgeBackgroundColor({ color: "#F39200" });
+  await browser.action.setBadgeBackgroundColor({ color: acc.base });
 }
