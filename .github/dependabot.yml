@@ -1,0 +1,22 @@
+version: 2
+
+# Grouped so a week of patch bumps arrives as one pull request instead of a dozen, and
+# scheduled early Monday so the week starts with the updates already merged.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '04:00'
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '04:00'
