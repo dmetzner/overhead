@@ -1,0 +1,30 @@
+name: CI
+
+# Tags run the same gate as branches — a release must never ship code the
+# suite hasn't seen (the sign/pack workflows additionally gate themselves).
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Lint + format (Biome)
+        run: npx --yes @biomejs/biome@2.5.5 ci .
+      - name: Syntax check
+        run: |
+          for f in rules.js share.js sw.js standard-headers.js popup/*.js; do
+            node --check "$f"
+          done
+      - name: Tests
+        run: node --test

@@ -1,0 +1,121 @@
+name: Sign Firefox add-on
+
+# Signs the add-on as an *unlisted* (self-distributed) Firefox .xpi and attaches
+# it to the matching GitHub Release. Unlisted add-ons are signed automatically by
+# Mozilla (no human review), so this needs no manual step once the two secrets
+# below exist.
+#
+# One-time setup (repo admin):
+#   1. Create an API credential at
+#      https://addons.mozilla.org/developers/addon/api/key/
+#   2. Add two repository secrets (Settings → Secrets and variables → Actions):
+#        AMO_JWT_ISSUER  = the "JWT issuer" (API key, starts with "user:")
+#        AMO_JWT_SECRET  = the "JWT secret"
+#
+# Then either push a tag vX.Y.Z (matching manifest.json) or run this manually.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the signed .xpi to (e.g. v1.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    steps:
+      - name: Skip without AMO credentials
+        id: gate
+        run: |
+          if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
+            echo "::notice::AMO_JWT_* secrets not configured — skipping Firefox signing."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.run == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version: "20"
+
+      - name: Read version from manifest
+        if: steps.gate.outputs.run == 'true'
+        id: manifest
+        run: echo "version=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Same gate as pack.yml: a mismatched tag must not produce a signed XPI.
+      - name: Verify tag matches manifest version
+        if: steps.gate.outputs.run == 'true'
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [ "${TAG#v}" != "${{ steps.manifest.outputs.version }}" ]; then
+            echo "::error::tag $TAG does not match manifest.json version ${{ steps.manifest.outputs.version }}"
+            exit 1
+          fi
+
+      # And the CI gate: never sign what the suite hasn't passed.
+      - name: Lint + tests
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          npx --yes @biomejs/biome@2.5.5 ci .
+          node --test
+
+      # web-ext lints and packs from a clean dir, so stage only the runtime files
+      # (same set the pack workflow ships) — no README, .git, workflows, examples.
+      - name: Stage extension files
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir -p dist
+          cp -r manifest.json sw.js rules.js share.js standard-headers.js popup.html popup popup.css icons dist/
+          # Firefox has no service_worker background (bug 1573659) — it uses an
+          # event page via background.scripts. The committed manifest is
+          # Chrome-canonical (service_worker only, no Chrome warning); swap in
+          # the scripts form here so the signed .xpi is warning-free on Firefox.
+          jq '.background = {"scripts": ["sw.js"], "type": "module"}' manifest.json > dist/manifest.json
+
+      # AMO rejects a version it already holds ("Version X already exists"). That
+      # is not a release failure — it is a re-run of a tag that was already
+      # signed — so treat only that conflict as a no-op and skip the upload.
+      - name: Sign (unlisted) via AMO
+        id: sign
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set +e
+          out=$(npx --yes web-ext@8 sign \
+            --channel=unlisted \
+            --source-dir dist \
+            --artifacts-dir web-ext-artifacts \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET" 2>&1)
+          code=$?
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            if echo "$out" | grep -qiE "Version .* already exists"; then
+              echo "::notice::AMO already has this version — nothing to sign."
+              echo "signed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            exit $code
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Attach signed .xpi to release
+        if: steps.sign.outputs.signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || format('v{0}', steps.manifest.outputs.version) }}
+          files: web-ext-artifacts/*.xpi

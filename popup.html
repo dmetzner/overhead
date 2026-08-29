@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Overhead</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="brand">Overhead</span>
+      <span class="count" id="count"></span>
+      <div class="settings">
+        <button
+          class="gear"
+          id="settingsBtn"
+          type="button"
+          title="Theme &amp; accent"
+          aria-label="Settings: theme, accent, share"
+          aria-expanded="false"
+          aria-controls="settingsPopover"
+        >
+          ⚙
+        </button>
+        <div class="popover hidden" id="settingsPopover" role="dialog" aria-label="Appearance">
+          <h3>Theme</h3>
+          <div class="segmented" id="themeSeg" role="group" aria-label="Theme">
+            <button type="button" data-theme="system" aria-pressed="false">System</button>
+            <button type="button" data-theme="light" aria-pressed="false">Light</button>
+            <button type="button" data-theme="dark" aria-pressed="false">Dark</button>
+          </div>
+          <h3>Accent</h3>
+          <div class="swatches" id="accentSwatches" role="group" aria-label="Accent color"></div>
+          <h3>Config</h3>
+          <div class="cfgrow">
+            <button type="button" class="cfgbtn" id="copyShare">Copy share link</button>
+            <button type="button" class="cfgbtn" id="importToggle" aria-expanded="false">Import…</button>
+          </div>
+          <div class="importbox hidden" id="importBox">
+            <textarea id="importText" rows="3" placeholder="Paste a share link or code" spellcheck="false"></textarea>
+            <button type="button" class="cfgbtn wide" id="importApply">Apply import</button>
+          </div>
+          <p class="cfgstatus" id="cfgStatus" role="status"></p>
+        </div>
+      </div>
+      <label class="switch" title="Toggle all headers">
+        <input type="checkbox" id="master" aria-label="Send all headers (master switch)" />
+        <span class="slider"></span>
+      </label>
+    </header>
+
+    <!-- One always-visible surface for save/rule failures, whatever pane is open. -->
+    <p id="globalErr" class="globalerr hidden" role="alert"></p>
+
+    <div class="profilebar">
+      <select id="profileSelect" title="Active profile" aria-label="Active profile"></select>
+      <input type="text" id="profRenameInput" class="rename hidden" spellcheck="false" aria-label="Rename profile" />
+      <button type="button" class="pbtn" id="profNew" title="New profile" aria-label="New profile">+</button>
+      <button type="button" class="pbtn" id="profDup" title="Duplicate profile" aria-label="Duplicate profile">⧉</button>
+      <button type="button" class="pbtn" id="profRename" title="Rename profile" aria-label="Rename profile">✎</button>
+      <button type="button" class="pbtn" id="profDel" title="Delete profile" aria-label="Delete profile">✕</button>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-endpoint" aria-controls="pane-endpoint" data-tab="endpoint">Endpoint</button>
+      <button class="tab" role="tab" id="tab-manual" aria-controls="pane-manual" data-tab="manual">Manual</button>
+    </div>
+
+    <section class="scope">
+      <div class="labelrow">
+        <label for="urlRegex">URL regex filter</label>
+        <button type="button" class="info" id="urlRegexInfo" aria-label="What is this?" aria-expanded="false">i</button>
+      </div>
+      <p class="help hidden" id="urlRegexHelp">
+        A regex (RE2) matched against each request URL — only matching requests get
+        the headers. Match several hosts with an alternation:
+        <code>(shop|admin)\.example\.dev</code>. Empty or <code>.*</code> = everything.
+      </p>
+      <input
+        type="text"
+        id="urlRegex"
+        class="mono"
+        placeholder="(shop|admin)\.example\.dev — match multiple hosts"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <p class="regexerr hidden" id="urlRegexErr" role="alert"></p>
+    </section>
+
+    <!-- ENDPOINT TAB -->
+    <div class="pane" id="pane-endpoint" role="tabpanel" aria-labelledby="tab-endpoint">
+      <div class="labelrow endpointlabel">
+        <label>Sources</label>
+        <button type="button" class="info" id="endpointInfo" aria-label="What is this?" aria-expanded="false">i</button>
+      </div>
+      <p class="help hidden" id="endpointHelp">
+        Each source is independent — a URL or a local JSON file, same schema
+        (see below). Add as many as you need; refresh fetches every URL source
+        in parallel and all their headers show up merged in one list below.
+        File sources aren't auto-refreshed — re-import to update one.
+      </p>
+
+      <ul id="sourceList" class="sourcerows"></ul>
+
+      <section class="addsource">
+        <input
+          type="text"
+          id="newSourceUrl"
+          class="mono"
+          placeholder="https://example.com/api/headers"
+          spellcheck="false"
+          autocomplete="off"
+        />
+        <button type="button" id="addSourceUrl" title="Add URL source">+</button>
+        <button type="button" id="addSourceFile" title="Import a local JSON file">File…</button>
+        <input type="file" id="fileInput" accept="application/json,.json" hidden />
+      </section>
+
+      <section class="endpointbar">
+        <button type="button" id="refresh" title="Fetch all URL sources">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" />
+          </svg>
+          Refresh all
+        </button>
+      </section>
+
+      <p class="status" id="status" role="status"></p>
+
+      <section class="catalogsearch">
+        <input type="text" id="flagFilter" placeholder="Filter headers…" spellcheck="false" />
+      </section>
+
+      <ul id="catalogList" class="rows"></ul>
+      <p id="catalogEmpty" class="empty hidden">
+        No headers yet. Add a source above and refresh (or import a file).
+      </p>
+
+      <details class="schema">
+        <summary>Expected response</summary>
+        <pre class="mono">{
+  <span class="s-key">"headers"</span>: [
+    {
+      <span class="s-key">"name"</span>:  <span class="s-str">"x-example-header"</span>,
+      <span class="s-key">"value"</span>: <span class="s-str">"1"</span>   <span class="s-cmt">// optional, default "1" (e.g. "1;context=de")</span>
+    }
+  ]
+}</pre>
+        <p class="schemahint">
+          <b>name</b> string · <b>value</b> string (optional). Just the dataset of known
+          header names — no on/off state is read from the response. Malformed rows
+          dropped; active ones inject as <code>&lt;name&gt;: &lt;value&gt;</code> —
+          sent exactly as the source spells it.
+        </p>
+      </details>
+    </div>
+
+    <!-- MANUAL TAB -->
+    <div class="pane hidden" id="pane-manual" role="tabpanel" aria-labelledby="tab-manual">
+      <ul id="headerList" class="rows"></ul>
+      <p id="empty" class="empty hidden">No headers yet. Add one below.</p>
+
+      <form id="addForm" class="add">
+        <input
+          type="text"
+          id="newName"
+          placeholder="header name"
+          aria-label="Header name"
+          list="stdHeaders"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <datalist id="stdHeaders"></datalist>
+        <input
+          type="text"
+          id="newValue"
+          class="value"
+          placeholder="value"
+          aria-label="Header value"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="submit" title="Add header" aria-label="Add header">+</button>
+      </form>
+      <p class="regexerr formerr hidden" id="formErr" role="alert"></p>
+
+      <footer class="hint">Any request header, sent as-is.</footer>
+    </div>
+
+    <script type="module" src="popup/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,74 @@
+name: Publish to Chrome Web Store
+
+# Publishes the Chrome zip to the Web Store on a version tag — but only once the
+# four CWS_* repo secrets exist. Until then every step is skipped, so it never
+# fails a release. See backlog story 34 for the one-time setup Daniel must do:
+#   1. CWS developer account ($5) + publish v1 manually to get the item ID.
+#   2. Google Cloud → enable Chrome Web Store API → OAuth Desktop client →
+#      generate a refresh token.
+#   3. Add repo secrets: CWS_EXTENSION_ID, CWS_CLIENT_ID, CWS_CLIENT_SECRET,
+#      CWS_REFRESH_TOKEN.
+#
+# Talks to the CWS REST API directly with curl: third-party marketplace actions
+# are resolved at job setup even when their step is `if`-skipped, so a vanished
+# action repo would fail the whole job (this happened with
+# mnao305/chrome-webstore-upload-action on v2.4.0).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Chrome zip
+        if: ${{ env.CWS_EXTENSION_ID != '' }}
+        run: |
+          zip -r "overhead-chrome.zip" \
+            manifest.json sw.js rules.js share.js standard-headers.js popup.html popup popup.css icons \
+            -x "*.DS_Store"
+
+      - name: Upload + publish to Chrome Web Store
+        if: ${{ env.CWS_EXTENSION_ID != '' }}
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          token=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
+            -d client_id="$CWS_CLIENT_ID" \
+            -d client_secret="$CWS_CLIENT_SECRET" \
+            -d refresh_token="$CWS_REFRESH_TOKEN" \
+            -d grant_type=refresh_token | jq -er .access_token)
+
+          upload=$(curl -fsS -X PUT \
+            -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
+            -T overhead-chrome.zip \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$CWS_EXTENSION_ID")
+          state=$(echo "$upload" | jq -r .uploadState)
+          if [ "$state" != "SUCCESS" ]; then
+            echo "::error::upload failed: $upload"
+            exit 1
+          fi
+
+          publish=$(curl -fsS -X POST \
+            -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$CWS_EXTENSION_ID/publish")
+          echo "$publish" | jq -e '.status | index("OK")' > /dev/null || {
+            echo "::error::publish failed: $publish"
+            exit 1
+          }
+
+      - name: Skipped (no CWS secrets)
+        if: ${{ env.CWS_EXTENSION_ID == '' }}
+        run: echo "CWS_* secrets not configured — skipping Chrome Web Store publish."
