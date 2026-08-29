@@ -1,12 +1,24 @@
 # Overhead
 
-A tiny browser extension (Manifest V3, Chrome + Firefox) that injects
-**arbitrary request headers** into outgoing requests. Type them by hand, or pull
-a known set from any JSON source (a dev backend, a local file) — either way they
-arrive verbatim.
+**Inject arbitrary HTTP request headers in Chrome and Firefox.** Type them by
+hand or pull a known set from any JSON source — either way they arrive verbatim.
 
-Toggle each header on/off, scope them to a URL regex. Multiple headers active
-at once, one click each. Light/dark theme and a pickable accent. No ads, no bloat.
+[![CI](https://github.com/dmetzner/overhead/actions/workflows/ci.yml/badge.svg)](https://github.com/dmetzner/overhead/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/dmetzner/overhead?label=release)](https://github.com/dmetzner/overhead/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Manifest V3](https://img.shields.io/badge/manifest-v3-lightgrey)
+
+<p align="center">
+  <img src="docs/shots/endpoint-dark.png" alt="Endpoint tab: headers pulled from a JSON source, each toggleable" width="32%">
+  <img src="docs/shots/manual-dark.png" alt="Manual tab: hand-typed headers scoped by URL regex" width="32%">
+  <img src="docs/shots/settings-dark.png" alt="Settings: theme, accent, and share-link config" width="32%">
+</p>
+
+Toggle each header on/off, scope them to a URL regex, keep separate profiles for
+staging and prod. No ads, no bloat, no telemetry — rules are built locally and
+nothing ever leaves your browser.
+
+**[overhead.metzner.uk](https://overhead.metzner.uk/)** · [Releases](../../releases) · [Share-link importer](https://overhead.metzner.uk/i/)
 
 Two ways to pick headers:
 
@@ -14,6 +26,46 @@ Two ways to pick headers:
   as fixed-format JSON (refresh for URLs, re-import for files), then toggle
   which ones to inject. No more guessing names or their casing.
 - **Manual** — type any header by hand.
+
+## Install
+
+Each release ships two zips — the only difference is the `background` key
+(Chrome needs a `service_worker`, Firefox an event-page `scripts` entry; see
+[How it works](#how-it-works)). Grab the one for your browser from the
+[Releases](../../releases) page. For Chrome dev you can also just `git clone`
+and load the repo folder directly — the committed `manifest.json` is the Chrome
+form.
+
+**Chrome / Chromium** (`overhead-chrome-v*.zip`, or the cloned repo folder):
+
+1. Open `chrome://extensions`.
+2. Enable **Developer mode** (top right).
+3. **Load unpacked** → select the folder.
+4. Pin the Overhead icon; the badge shows how many headers are active.
+
+**Firefox (temporary, for development):**
+
+Firefox only runs unsigned add-ons as *temporary* installs — they're removed
+when Firefox restarts, so reload after each restart. Use the **Firefox** zip
+(`overhead-firefox-v*.zip`) — the repo's own `manifest.json` is Chrome-only and
+won't start a background page on Firefox.
+
+1. Unzip `overhead-firefox-v*.zip`.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on…** and pick `manifest.json` inside the unzipped folder.
+4. The first time you toggle a header on, Firefox may prompt for the
+   `<all_urls>` permission (needed to modify requests) — allow it, or grant it
+   up front via the add-on's **Permissions** tab in `about:addons`.
+
+**Firefox (permanent, signed):**
+
+For an install that survives restarts, use the signed `.xpi` attached to each
+[Release](../../releases) — open it in Firefox, or drag it onto `about:addons`.
+Firefox add-ons distributed this way are *unlisted* (not on the public AMO
+gallery); Mozilla signs them automatically. Signing is done in CI by the
+[Sign Firefox add-on](.github/workflows/sign-firefox.yml) workflow — see below.
+(The signed `.xpi` installs permanently but doesn't self-update yet; that needs
+the `update_url` + `updates.json` layer, not set up here.)
 
 ## Endpoint sources
 
@@ -121,46 +173,6 @@ endpoint selections so a source-driven profile round-trips as a working setup).
 The same `share.js` decodes the link on the import-preview page, so the preview
 shows exactly what will import. Because the values are visible to anyone with the
 link, a link carrying a token or secret should be shared with care.
-
-## Install
-
-Each release ships two zips — the only difference is the `background` key
-(Chrome needs a `service_worker`, Firefox an event-page `scripts` entry; see
-[How it works](#how-it-works)). Grab the one for your browser from the
-[Releases](../../releases) page. For Chrome dev you can also just `git clone`
-and load the repo folder directly — the committed `manifest.json` is the Chrome
-form.
-
-**Chrome / Chromium** (`overhead-chrome-v*.zip`, or the cloned repo folder):
-
-1. Open `chrome://extensions`.
-2. Enable **Developer mode** (top right).
-3. **Load unpacked** → select the folder.
-4. Pin the Overhead icon; the badge shows how many headers are active.
-
-**Firefox (temporary, for development):**
-
-Firefox only runs unsigned add-ons as *temporary* installs — they're removed
-when Firefox restarts, so reload after each restart. Use the **Firefox** zip
-(`overhead-firefox-v*.zip`) — the repo's own `manifest.json` is Chrome-only and
-won't start a background page on Firefox.
-
-1. Unzip `overhead-firefox-v*.zip`.
-2. Open `about:debugging#/runtime/this-firefox`.
-3. Click **Load Temporary Add-on…** and pick `manifest.json` inside the unzipped folder.
-4. The first time you toggle a header on, Firefox may prompt for the
-   `<all_urls>` permission (needed to modify requests) — allow it, or grant it
-   up front via the add-on's **Permissions** tab in `about:addons`.
-
-**Firefox (permanent, signed):**
-
-For an install that survives restarts, use the signed `.xpi` attached to each
-[Release](../../releases) — open it in Firefox, or drag it onto `about:addons`.
-Firefox add-ons distributed this way are *unlisted* (not on the public AMO
-gallery); Mozilla signs them automatically. Signing is done in CI by the
-[Sign Firefox add-on](.github/workflows/sign-firefox.yml) workflow — see below.
-(The signed `.xpi` installs permanently but doesn't self-update yet; that needs
-the `update_url` + `updates.json` layer, not set up here.)
 
 ## Releasing
 
