@@ -1,0 +1,5 @@
+# Two pages, both public, both worth indexing.
+User-agent: *
+Allow: /
+
+Sitemap: https://overhead.metzner.uk/sitemap.xml

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	Written by hand, and that is the right call at this size: the site is two static pages that
+	change when someone edits them. A generator would be a build step, a dependency and a thing to
+	keep working, for two <url> elements.
+
+	If a third page ever appears, add it here — `docs/` is served verbatim by GitHub Pages, so
+	there is no build to forget to run.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+	<url>
+		<loc>https://overhead.metzner.uk/</loc>
+	</url>
+	<url>
+		<!-- The import target: a config shared as a link lands here. -->
+		<loc>https://overhead.metzner.uk/i/</loc>
+	</url>
+</urlset>
