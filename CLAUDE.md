@@ -73,3 +73,15 @@ Chrome Web Store publish (`publish-chrome.yml`) is wired but dormant until the
 four `CWS_*` secrets exist (see backlog story 34 / CHANGELOG). Firefox signs
 automatically via AMO.
 Don't commit unless asked — Daniel reviews diffs.
+
+## How changes land
+
+**Every change goes through a pull request — no direct pushes to `main`.** Merging needs three
+things: this repo's gate green locally (`npm run check`), CI green, and an independent review
+with no unresolved high or major finding on the commit that gets merged.
+
+**A CI job that could not START is not a pass.** The Actions billing block dies in about three
+seconds with no logs and no steps; that is "could not run", and it is said out loud on the PR
+rather than merged past in silence.
+
+**The only exception is a project Daniel has explicitly called prototyping. This is not one.**
