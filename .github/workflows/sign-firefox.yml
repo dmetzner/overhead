@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write
+  deployments: write   # the "Record the deploy" step at the bottom
 
 jobs:
   sign:
@@ -119,3 +120,30 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || format('v{0}', steps.manifest.outputs.version) }}
           files: web-ext-artifacts/*.xpi
+
+      # Mission control counts commits since the newest GitHub deployment record in this
+      # project's environment (`deploy.environment` in ~/me/setup/mission-control/projects.json).
+      # Nothing posts one for a signed AMO upload, and this repo's `github-pages` records are a docs build, so the card would measure whatever unrelated thing last
+      # did — this repo's newest record is a `play` release, which is exactly how the WEB build
+      # came to be reported 45 days stale while it was current. `~/me/setup/record-deploy.sh`
+      # makes the same call from a laptop; deploy.sh calls it there and skips here, where ~/me
+      # does not exist.
+      #
+      # `auto_merge:false` + empty `required_contexts` are load-bearing: with the defaults GitHub
+      # refuses to create a deployment while checks are pending or red. This records what already
+      # shipped — it is not a gate, and never fails the job.
+      - name: Record the deploy
+        if: steps.sign.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          id=$(jq -n --arg ref "$GITHUB_SHA" --arg env "amo" \
+                 '{ref:$ref, environment:$env, task:"deploy", auto_merge:false,
+                   required_contexts:[], production_environment:true,
+                   description:"recorded by the deploy workflow"}' \
+               | gh api "repos/$GITHUB_REPOSITORY/deployments" --input - --jq .id) || true
+          case "${id:-}" in ''|null) echo "::warning::deploy not recorded"; exit 0 ;; esac
+          gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+            -f state=success >/dev/null \
+            || echo "::warning::deployment $id created without a success status"
