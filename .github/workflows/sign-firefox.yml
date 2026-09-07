@@ -136,9 +136,14 @@ jobs:
         if: steps.sign.outputs.signed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          # The tag that was signed, not the branch tip: this workflow can be dispatched by hand
+          # against an OLDER tag (`inputs.tag`, the same one the release step attaches the .xpi
+          # to), and GITHUB_SHA on a dispatch is main's tip. The API resolves a tag name as a
+          # ref, so recording the tag keeps "what is on AMO" true after a re-sign.
+          DEPLOYED_REF: ${{ inputs.tag || github.sha }}
         run: |
           set -uo pipefail
-          id=$(jq -n --arg ref "$GITHUB_SHA" --arg env "amo" \
+          id=$(jq -n --arg ref "$DEPLOYED_REF" --arg env "amo" \
                  '{ref:$ref, environment:$env, task:"deploy", auto_merge:false,
                    required_contexts:[], production_environment:true,
                    description:"recorded by the deploy workflow"}' \
