@@ -107,6 +107,9 @@ jobs:
           if [ -x .github/ensure-release.sh ]; then
             .github/ensure-release.sh "$TAG" "$V"
           elif ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "$TAG" --generate-notes
+            # `|| gh release view` for the same reason ensure-release.sh re-checks:
+            # on a tag push both shippers race here and only one can create.
+            gh release create "$TAG" --title "$TAG" --generate-notes \
+              || gh release view "$TAG" >/dev/null
           fi
           gh release upload "$TAG" overhead-chrome-v"$V".zip overhead-firefox-v"$V".zip --clobber

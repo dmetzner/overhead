@@ -160,9 +160,16 @@ jobs:
           # a resume this is the difference between the notes for the version
           # being released and the notes of whatever landed since. Read out of
           # the tag rather than checked out, so the *script* stays this commit's.
-          git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
+          # Forced refspec: a stale local refs/tags/$TAG would otherwise make the
+          # read below silently return the wrong blob. Unreachable at this job's
+          # depth-1 checkout, which fetches no tags — and reachable the moment
+          # anyone adds fetch-tags or fetch-depth here.
+          git fetch --quiet origin "+refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
           notes="$RUNNER_TEMP/tagged-changelog.md"
-          git show "refs/tags/$TAG:CHANGELOG.md" > "$notes" 2>/dev/null || cp CHANGELOG.md "$notes"
+          if ! git show "refs/tags/$TAG:CHANGELOG.md" > "$notes" 2>/dev/null; then
+            echo "::warning::could not read CHANGELOG.md at $TAG — using the working tree's copy for the release notes"
+            cp CHANGELOG.md "$notes"
+          fi
           .github/ensure-release.sh "$TAG" "$V" "$notes"
 
   # The zips, the signed Firefox .xpi (which also records the deploy) and the

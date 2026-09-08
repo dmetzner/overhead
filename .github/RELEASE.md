@@ -115,7 +115,26 @@ therefore asks the store what version it holds (`?projection=DRAFT` →
 `crxVersion`) and skips the upload when it already has this one; a publish call
 that then fails is a warning rather than an error, because "already live or in
 review" is not a release failure. A first-pass publish failure still fails the
-job.
+job. The version query is allowed to fail — an item that has never been
+published may not answer it, and "unknown" must mean "try the upload", not a red
+first publish.
+
+Two things to know about that skip, when the `CWS_*` secrets land:
+
+- **It trusts the version number as a proxy for the package.** A draft sitting at
+  this version that this repo did not build gets published as-is; the CWS item
+  resource exposes no hash to check it against. The likely first encounter is
+  the setup itself: step 1 above is "publish v1 manually", so the first
+  automated release of *that same version* would skip its own upload and publish
+  the hand-uploaded package. Bump before the first automated release, or expect
+  the notice. In the case the skip exists for — upload succeeded, publish failed
+  — the leftover draft was necessarily built from the tagged tree, because the
+  shippers are pinned to the tag, so skipping is byte-identical to re-uploading.
+- **Verify on the second run for one version** that the log says `the Web Store
+  already holds <v> — skipping the upload` and not `upload failed`. If
+  `?projection=DRAFT` reports no `crxVersion` for an already-*published* version
+  with no pending draft, the skip never fires and a resumed release goes red at
+  the duplicate upload — the exact failure the check was added to remove.
 
 ## Why `gh` instead of `softprops/action-gh-release`
 

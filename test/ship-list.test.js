@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import test from "node:test";
 
 // The set of files that make up the shipped extension is written down in four
@@ -115,3 +115,18 @@ test("the runtime regex matches shipped paths and nothing adjacent", () => {
     assert.ok(!re.test(p), `${p} should NOT count as a runtime change`);
   }
 });
+
+// pack.yml and sign-firefox.yml call `.github/ensure-release.sh` behind an
+// `[ -x ]` guard, so a lost exec bit does not fail the release — it quietly
+// falls through to `--generate-notes` and the CHANGELOG notes disappear from the
+// release body with no warning. Both gates likewise execute runtime-regex.sh
+// directly.
+for (const script of [".github/ensure-release.sh", ".github/runtime-regex.sh"]) {
+  test(`${script} is executable`, () => {
+    const mode = statSync(new URL(`../${script}`, import.meta.url)).mode & 0o777;
+    assert.ok(
+      mode & 0o111,
+      `${script} is mode ${mode.toString(8)} — the workflows execute it directly, and pack/sign-firefox silently downgrade the release notes when it is not executable`,
+    );
+  });
+}
