@@ -63,10 +63,7 @@ jobs:
             exit 0
           fi
 
-          runtime=$(awk '!/^[[:space:]]*(#|$)/ {
-            gsub(/\./, "\\.");
-            print (/\/$/ ? "^" $0 : "^" $0 "$")
-          }' .github/runtime-paths.txt | paste -sd '|' -)
+          runtime=$(.github/runtime-regex.sh)
 
           if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE "$runtime"; then
             echo "::error::this push changed shipped runtime files, but $tag is already tagged — the shippers build the tag's tree, so the change reaches no user. Bump manifest.json + package.json, add a CHANGELOG section, and merge that."

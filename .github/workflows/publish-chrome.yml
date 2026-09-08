@@ -1,7 +1,7 @@
 name: Publish to Chrome Web Store
 
-# Publishes the Chrome zip to the Web Store on a version tag — but only once the
-# four CWS_* repo secrets exist. Until then every step is skipped, so it never
+# Publishes the Chrome zip to the Web Store for a released version — but only
+# once the four CWS_* repo secrets exist. Until then every step is skipped, so it never
 # fails a release. See backlog story 34 for the one-time setup Daniel must do:
 #   1. CWS developer account ($5) + publish v1 manually to get the item ID.
 #   2. Google Cloud → enable Chrome Web Store API → OAuth Desktop client →
@@ -36,7 +36,15 @@ on:
         required: false
       CWS_REFRESH_TOKEN:
         required: false
+  # A tag, not a branch: this checks out `inputs.tag` and refuses a tree whose
+  # manifest disagrees with it, so dispatching from a branch could only ever
+  # fail. Naming the tag makes a manual re-publish work.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v1.1.0)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -94,30 +102,55 @@ jobs:
           CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
         run: |
+          set -euo pipefail
+          api=https://www.googleapis.com/chromewebstore/v1.1/items
+          v=$(node -p "require('./manifest.json').version")
+
           token=$(curl -fsS -X POST https://oauth2.googleapis.com/token \
             -d client_id="$CWS_CLIENT_ID" \
             -d client_secret="$CWS_CLIENT_SECRET" \
             -d refresh_token="$CWS_REFRESH_TOKEN" \
             -d grant_type=refresh_token | jq -er .access_token)
 
-          upload=$(curl -fsS -X PUT \
+          # The Web Store is the one shipper that is not idempotent: it refuses a
+          # package whose version is not greater than the one it holds. Uploading
+          # blindly would make every *resumed* release fail here forever (the
+          # release chain can re-enter a half-finished release), so ask first.
+          held=$(curl -fsS \
             -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
-            -T overhead-chrome.zip \
-            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$CWS_EXTENSION_ID")
-          state=$(echo "$upload" | jq -r .uploadState)
-          if [ "$state" != "SUCCESS" ]; then
-            echo "::error::upload failed: $upload"
-            exit 1
+            "$api/$CWS_EXTENSION_ID?projection=DRAFT" | jq -r '.crxVersion // empty')
+
+          if [ "$held" = "$v" ]; then
+            echo "::notice::the Web Store already holds $v — skipping the upload"
+            already=true
+          else
+            already=false
+            upload=$(curl -fsS -X PUT \
+              -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
+              -T overhead-chrome.zip \
+              "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$CWS_EXTENSION_ID")
+            state=$(echo "$upload" | jq -r .uploadState)
+            if [ "$state" != "SUCCESS" ]; then
+              echo "::error::upload failed: $upload"
+              exit 1
+            fi
           fi
 
-          publish=$(curl -fsS -X POST \
+          # No -f: the body carries the reason, and a re-publish of a version the
+          # store already has (published, or in review) is not a release failure.
+          publish=$(curl -sS -X POST \
             -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
             -H "Content-Length: 0" \
-            "https://www.googleapis.com/chromewebstore/v1.1/items/$CWS_EXTENSION_ID/publish")
-          echo "$publish" | jq -e '.status | index("OK")' > /dev/null || {
+            "$api/$CWS_EXTENSION_ID/publish") || publish='{"error":"request failed"}'
+
+          if echo "$publish" | jq -e '.status | index("OK")' >/dev/null 2>&1; then
+            echo "::notice::published $v to the Chrome Web Store"
+          elif [ "$already" = true ]; then
+            echo "::warning::$v is already uploaded and could not be published again — likely live or in review: $publish"
+          else
             echo "::error::publish failed: $publish"
             exit 1
-          }
+          fi
 
       - name: Skipped (no CWS secrets)
         if: ${{ env.CWS_EXTENSION_ID == '' }}

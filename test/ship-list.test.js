@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
@@ -67,5 +68,39 @@ test("the declared runtime paths all exist in the repo", () => {
       existsSync(new URL(`../${p}`, import.meta.url)),
       `.github/runtime-paths.txt lists "${p}", which is not in the repo`,
     );
+  }
+});
+
+// The regex both gates match changed paths against. Its failure mode is silent:
+// a wrong escape yields a pattern that matches nothing, so the gates stop firing
+// and every release check quietly passes. So assert the exact string, and the
+// two anchoring decisions that make it correct.
+const runtimeRegex = () =>
+  execFileSync(new URL("../.github/runtime-regex.sh", import.meta.url).pathname, {
+    cwd: new URL("..", import.meta.url).pathname,
+    encoding: "utf8",
+  }).trim();
+
+test("the runtime regex is built from the declaration, correctly escaped", () => {
+  const expected = [...declared]
+    .map((p) => {
+      const escaped = p.replace(/\./g, "\\.");
+      // A directory entry keeps its trailing slash and is anchored at the front
+      // only; a file entry is anchored at both ends.
+      return read(".github/runtime-paths.txt").includes(`${p}/`)
+        ? `^${escaped}/`
+        : `^${escaped}$`;
+    })
+    .join("|");
+  assert.equal(runtimeRegex(), expected);
+});
+
+test("the runtime regex matches shipped paths and nothing adjacent", () => {
+  const re = new RegExp(runtimeRegex());
+  for (const p of ["manifest.json", "sw.js", "popup/store.js", "popup/nested/deep.js", "icons/icon16.png"]) {
+    assert.ok(re.test(p), `${p} should count as a runtime change`);
+  }
+  for (const p of ["manifest.jsonx", "sw.js.bak", "my/popup/x.js", "docs/share.js", "test/sw.test.js", "README.md"]) {
+    assert.ok(!re.test(p), `${p} should NOT count as a runtime change`);
   }
 });

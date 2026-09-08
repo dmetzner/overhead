@@ -31,6 +31,7 @@ jobs:
           # Three workflows call these, and a syntax error there only surfaces
           # mid-release.
           for f in .github/*.sh; do
+            [ -e "$f" ] || continue
             bash -n "$f"
           done
       - name: Tests
@@ -87,13 +88,10 @@ jobs:
 
           base_v=$(git show "origin/$BASE:manifest.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
 
-          # What counts as a shipped runtime file lives in one file, not in a
-          # regex per workflow; test/ship-list.test.js keeps it in step with
-          # what the three shipping workflows actually zip.
-          runtime=$(awk '!/^[[:space:]]*(#|$)/ {
-            gsub(/\./, "\\.");
-            print (/\/$/ ? "^" $0 : "^" $0 "$")
-          }' .github/runtime-paths.txt | paste -sd '|' -)
+          # What counts as a shipped runtime file lives in one declaration and
+          # one builder; test/ship-list.test.js keeps both in step with what the
+          # three shipping workflows actually zip.
+          runtime=$(.github/runtime-regex.sh)
           echo "Runtime paths: $runtime"
 
           changed=$(git diff --name-only "origin/$BASE...HEAD")

@@ -103,6 +103,20 @@ Firefox distribution for that version outright. The signed `.xpi` is therefore
 also kept as a workflow artifact, and its absence from the release is warned
 about.
 
+`gh release upload --clobber` deletes an asset before it re-uploads it, so a
+failed re-upload leaves the release with *fewer* zips than it started with. The
+gate heals that on the next run — but it is also why the zip count must never be
+guessed at.
+
+**The Chrome Web Store is the one shipper that is not idempotent.** It refuses a
+package whose version is not greater than the one it holds, so a resumed release
+whose `chrome` job already succeeded would fail there forever. `publish-chrome.yml`
+therefore asks the store what version it holds (`?projection=DRAFT` →
+`crxVersion`) and skips the upload when it already has this one; a publish call
+that then fails is a warning rather than an error, because "already live or in
+review" is not a release failure. A first-pass publish failure still fails the
+job.
+
 ## Why `gh` instead of `softprops/action-gh-release`
 
 `--clobber` makes a re-run idempotent, a hand-pushed tag gets the same CHANGELOG
@@ -114,8 +128,12 @@ v2.4.0. Third-party actions are resolved at job setup even when their step is
 
 ## Why the ship-list is declared once
 
-`.github/runtime-paths.txt` is the declared set of shipped runtime paths; both
-gates build their regex from it. The three shipping workflows still carry their
+`.github/runtime-paths.txt` is the declared set of shipped runtime paths, and
+`.github/runtime-regex.sh` turns it into the ERE both gates match against — a
+script rather than an inline awk block in each gate, because the block was
+copy-pasted (a third place to drift) and its failure mode is silent: a wrong
+escape yields a pattern that matches nothing, so the gates stop firing and every
+release check quietly passes. The test asserts the exact string it prints. The three shipping workflows still carry their
 own shell word lists, because a word list is not a regex — so
 `test/ship-list.test.js` fails when any of them drifts from the declaration.
 Without that test, a new runtime file either ships without ever triggering a
