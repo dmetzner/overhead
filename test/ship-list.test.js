@@ -87,9 +87,7 @@ test("the runtime regex is built from the declaration, correctly escaped", () =>
       const escaped = p.replace(/\./g, "\\.");
       // A directory entry keeps its trailing slash and is anchored at the front
       // only; a file entry is anchored at both ends.
-      return read(".github/runtime-paths.txt").includes(`${p}/`)
-        ? `^${escaped}/`
-        : `^${escaped}$`;
+      return read(".github/runtime-paths.txt").includes(`${p}/`) ? `^${escaped}/` : `^${escaped}$`;
     })
     .join("|");
   assert.equal(runtimeRegex(), expected);
@@ -97,10 +95,23 @@ test("the runtime regex is built from the declaration, correctly escaped", () =>
 
 test("the runtime regex matches shipped paths and nothing adjacent", () => {
   const re = new RegExp(runtimeRegex());
-  for (const p of ["manifest.json", "sw.js", "popup/store.js", "popup/nested/deep.js", "icons/icon16.png"]) {
+  for (const p of [
+    "manifest.json",
+    "sw.js",
+    "popup/store.js",
+    "popup/nested/deep.js",
+    "icons/icon16.png",
+  ]) {
     assert.ok(re.test(p), `${p} should count as a runtime change`);
   }
-  for (const p of ["manifest.jsonx", "sw.js.bak", "my/popup/x.js", "docs/share.js", "test/sw.test.js", "README.md"]) {
+  for (const p of [
+    "manifest.jsonx",
+    "sw.js.bak",
+    "my/popup/x.js",
+    "docs/share.js",
+    "test/sw.test.js",
+    "README.md",
+  ]) {
     assert.ok(!re.test(p), `${p} should NOT count as a runtime change`);
   }
 });
