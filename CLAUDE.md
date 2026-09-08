@@ -48,16 +48,33 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
   entry point (manual add, inline edit, import, applyRules itself) must go
   through `headerNameError`/`headerValueError`/`urlRegexError`; don't add an
   input path that bypasses them.
-- **Ship-list is duplicated in three workflows** (`pack.yml`,
-  `sign-firefox.yml`, `publish-chrome.yml`) plus the `ci.yml` syntax loop:
-  adding a runtime file/dir means updating all of them (the `popup` directory is
-  shipped as a whole). `share.js` is a shipped runtime file — `docs/` is not.
+- **Ship-list is duplicated in five places**: three workflows (`pack.yml`,
+  `sign-firefox.yml`, `publish-chrome.yml`), the `ci.yml` syntax loop, and the
+  `runtime=` regex in `ci.yml`'s `release-readiness` job (which decides whether
+  a PR owes a version bump). Adding a runtime file/dir means updating all of
+  them (the `popup` directory is shipped as a whole). `share.js` is a shipped
+  runtime file — `docs/` is not.
 - **Per-browser manifest:** committed `manifest.json` is Chrome (`service_worker`);
   the CI Firefox build swaps in `background.scripts` via a `jq` step. Edit both
   builds in the workflows if the background block changes.
-- **Release:** push tag `vX.Y.Z` matching `manifest.json`. `pack.yml` builds the
-  two zips; `sign-firefox.yml` signs the unlisted `.xpi` via AMO (needs
-  `AMO_JWT_*` secrets). Fork gate is cleared, so tag push auto-runs both.
+- **Release is the merge.** A push to `main` whose `manifest.json` version has no
+  tag yet *is* a release: `release.yml` re-runs the CI gate, creates the tag and
+  the GitHub release (body = the matching `## X.Y.Z` CHANGELOG section), then
+  calls `pack.yml` (zips), `sign-firefox.yml` (unlisted `.xpi` via AMO, and it
+  records the deploy) and `publish-chrome.yml`. So a release PR bumps
+  `manifest.json` + `package.json` and adds a CHANGELOG section — nothing is
+  pushed or tagged by hand. A hand-pushed tag `vX.Y.Z` still works: all three
+  keep their `on: push: tags` trigger.
+- **Never just push the tag from a workflow.** A tag pushed with `GITHUB_TOKEN`
+  does not trigger `on: push: tags` runs (GitHub's no-recursive-runs rule), so
+  auto-tagging alone ships *nothing* while looking green. That is why
+  `release.yml` calls the three as reusable workflows (`workflow_call`) — and why
+  `pack.yml`/`sign-firefox.yml` take the tag as an `inputs.tag`: in a called
+  workflow `github.ref` is `main`, not the tag.
+- **`ci.yml`'s `release-readiness` job is what makes that true**: a PR touching a
+  shipped runtime file fails unless `manifest.json` moves forward,
+  `package.json` matches, and a `## <version>` CHANGELOG section exists. Docs,
+  tests, CI and dependency bumps touch no runtime file and release nothing.
 
 ## Commands
 ```bash
@@ -67,7 +84,8 @@ npx @biomejs/biome check --write .       # apply fixes
 ```
 Biome lints JS/CSS/JSON only — `.html` and the vendored `docs/count.js` are
 excluded (see `biome.json`). CI (`ci.yml`) runs Biome + syntax + tests on every
-push/PR; `pack.yml` asserts the tag matches `manifest.json`.
+push/PR (and again from `release.yml` before it ships); `pack.yml` asserts the
+tag matches `manifest.json`.
 
 Chrome Web Store publish (`publish-chrome.yml`) is wired but dormant until the
 four `CWS_*` secrets exist (see backlog story 34 / CHANGELOG). Firefox signs
