@@ -1,0 +1,119 @@
+name: Release
+
+# The whole release, on merge. A push to main whose manifest.json version has no
+# tag yet is a release: this workflow re-runs the gate, creates the tag and the
+# GitHub release (notes lifted from CHANGELOG.md), then calls the three shipping
+# workflows directly.
+#
+# Why it *calls* them instead of just pushing the tag: a tag pushed with
+# GITHUB_TOKEN does not trigger `on: push: tags` workflows (GitHub's
+# no-recursive-runs rule). Auto-tagging alone would look like it worked and ship
+# nothing. Calling them as reusable workflows needs no PAT secret, and they keep
+# their own tag triggers so a hand-pushed tag still works exactly as before.
+#
+# A merge with no bump ends at the `gate` job — see ci.yml's release-readiness
+# job, which is what stops a runtime change from landing without one.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Is this version already tagged?
+        id: check
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./manifest.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "::notice::v$version is already tagged — nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::v$version has no tag yet — releasing"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Never ship what the suite has not passed, even though the same gate ran on
+  # this commit's own push — a release is the one place worth the duplicate.
+  ci:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  tag:
+    needs: [gate, ci]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Release notes from CHANGELOG
+        env:
+          V: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          awk -v v="$V" '
+            $0 ~ "^## +" v "( |$)" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          # ci.yml requires the section on any release-bearing PR; a hand-pushed
+          # bump could still miss it, and an empty body beats a failed release.
+          if [ ! -s notes.md ]; then
+            echo "::warning::no '## $V' section in CHANGELOG.md — releasing without notes"
+            printf 'See CHANGELOG.md.\n' > notes.md
+          fi
+          cat notes.md
+
+      - name: Tag and create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" --jq .ref
+          gh release create "$TAG" --title "$TAG" --notes-file notes.md
+
+  # The zips, the signed Firefox .xpi (which also records the deploy) and the
+  # Chrome Web Store push. Each attaches to the release the `tag` job just made.
+  pack:
+    needs: [gate, tag]
+    uses: ./.github/workflows/pack.yml
+    with:
+      tag: ${{ needs.gate.outputs.tag }}
+    permissions:
+      contents: write
+
+  firefox:
+    needs: [gate, tag]
+    uses: ./.github/workflows/sign-firefox.yml
+    with:
+      tag: ${{ needs.gate.outputs.tag }}
+    secrets: inherit
+    permissions:
+      contents: write
+      deployments: write
+
+  chrome:
+    needs: [gate, tag]
+    uses: ./.github/workflows/publish-chrome.yml
+    secrets: inherit
+    permissions:
+      contents: read

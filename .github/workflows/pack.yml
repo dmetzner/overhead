@@ -1,9 +1,24 @@
 name: Pack extension
 
+# Builds the two store zips and attaches them to the matching GitHub release.
+# Runs on a hand-pushed tag, on demand, or called by release.yml on a merge that
+# carries a version bump — in the last case `inputs.tag` names the release,
+# because a called workflow's `github.ref` is main, not the tag.
 on:
   push:
     tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to verify against and attach the zips to"
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the zips to (leave empty to only build artifacts)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -18,12 +33,31 @@ jobs:
         id: manifest
         run: echo "version=$(node -p "require('./manifest.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Verify tag matches manifest version
-        if: startsWith(github.ref, 'refs/tags/')
+      # Empty for a plain workflow_dispatch: build the artifacts, release nothing.
+      - name: Resolve the release tag
+        id: release
+        env:
+          IN: ${{ inputs.tag }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          if [ "$tag" != "${{ steps.manifest.outputs.version }}" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match manifest.json version ${{ steps.manifest.outputs.version }}"
+          set -euo pipefail
+          tag=""
+          if [ -n "$IN" ]; then
+            tag="$IN"
+          else
+            case "$REF" in refs/tags/*) tag="$REF_NAME" ;; esac
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches manifest version
+        if: steps.release.outputs.tag != ''
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          V: ${{ steps.manifest.outputs.version }}
+        run: |
+          if [ "${TAG#v}" != "$V" ]; then
+            echo "::error::tag $TAG does not match manifest.json version $V"
             exit 1
           fi
 
@@ -51,7 +85,8 @@ jobs:
           path: overhead-*-v${{ steps.manifest.outputs.version }}.zip
 
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: steps.release.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release.outputs.tag }}
           files: overhead-*-v${{ steps.manifest.outputs.version }}.zip

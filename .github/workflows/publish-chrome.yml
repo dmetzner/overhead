@@ -17,6 +17,10 @@ name: Publish to Chrome Web Store
 on:
   push:
     tags: ["v*"]
+  # Called by release.yml on a merge that carries a version bump. No tag input:
+  # this publishes the checked-out tree, and release.yml only calls it on the
+  # commit it just tagged.
+  workflow_call:
   workflow_dispatch:
 
 permissions:
