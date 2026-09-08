@@ -17,10 +17,25 @@ name: Publish to Chrome Web Store
 on:
   push:
     tags: ["v*"]
-  # Called by release.yml on a merge that carries a version bump. No tag input:
-  # this publishes the checked-out tree, and release.yml only calls it on the
-  # commit it just tagged.
+  # Called by release.yml on a merge that carries a version bump. The tag is an
+  # input so a tag push and a merge get the same check; release.yml only calls
+  # this on the commit it just tagged.
   workflow_call:
+    inputs:
+      tag:
+        description: "Release tag being published (e.g. v1.1.0)"
+        required: true
+        type: string
+    # Declared, not inherited — the caller passes only these four.
+    secrets:
+      CWS_EXTENSION_ID:
+        required: false
+      CWS_CLIENT_ID:
+        required: false
+      CWS_CLIENT_SECRET:
+        required: false
+      CWS_REFRESH_TOKEN:
+        required: false
   workflow_dispatch:
 
 permissions:
@@ -33,6 +48,31 @@ jobs:
       CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        if: ${{ env.CWS_EXTENSION_ID != '' }}
+        with:
+          node-version: "20"
+
+      # The same two gates pack.yml and sign-firefox.yml apply. Without them a
+      # bare tag push could publish a mismatched, untested tree to the store —
+      # the one irreversible step in the estate.
+      - name: Verify tag matches manifest version
+        if: ${{ env.CWS_EXTENSION_ID != '' }}
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          v=$(node -p "require('./manifest.json').version")
+          if [ "${TAG#v}" != "$v" ]; then
+            echo "::error::tag $TAG does not match manifest.json version $v"
+            exit 1
+          fi
+
+      - name: Lint + tests
+        if: ${{ env.CWS_EXTENSION_ID != '' }}
+        run: |
+          npx --yes @biomejs/biome@2.5.5 ci .
+          node --test
 
       - name: Build Chrome zip
         if: ${{ env.CWS_EXTENSION_ID != '' }}

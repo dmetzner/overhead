@@ -28,6 +28,11 @@ jobs:
           for f in rules.js share.js sw.js standard-headers.js popup/*.js; do
             node --check "$f"
           done
+          # Three workflows call these, and a syntax error there only surfaces
+          # mid-release.
+          for f in .github/*.sh; do
+            bash -n "$f"
+          done
       - name: Tests
         run: node --test
 
@@ -39,6 +44,15 @@ jobs:
   #
   # Docs, tests, CI and dependency bumps touch no runtime file, so they pass
   # untouched and release nothing.
+  #
+  # This job is meant to become a *required* status check, so it must always run
+  # and always report: the non-main case is waved through inside the script
+  # rather than by a job-level `if`, because a job that never runs leaves a
+  # required check pending forever.
+  #
+  # It does NOT run on `merge_group`; if a merge queue is ever enabled here the
+  # gate silently vanishes and `github.base_ref` is empty, so the script needs
+  # reworking before turning one on.
   release-readiness:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -52,6 +66,13 @@ jobs:
           BASE: ${{ github.base_ref }}
         run: |
           set -euo pipefail
+
+          # A stacked PR (feature -> feature) releases nothing, so it owes no
+          # bump; the gate applies when that stack reaches main.
+          if [ "$BASE" != "main" ]; then
+            echo "::notice::base is '$BASE', not main — a merge there releases nothing, so no bump is required"
+            exit 0
+          fi
 
           head_v=$(node -p "require('./manifest.json').version")
           pkg_v=$(node -p "require('./package.json').version")

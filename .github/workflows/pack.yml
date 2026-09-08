@@ -84,9 +84,17 @@ jobs:
           name: overhead-v${{ steps.manifest.outputs.version }}
           path: overhead-*-v${{ steps.manifest.outputs.version }}.zip
 
+      # `gh` rather than a marketplace action: `--clobber` makes a re-run
+      # idempotent, and the shared script gives a hand-pushed tag the same
+      # CHANGELOG notes the merge path produces (the action created the release
+      # with an empty body).
       - name: Attach to release
         if: steps.release.outputs.tag != ''
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.release.outputs.tag }}
-          files: overhead-*-v${{ steps.manifest.outputs.version }}.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          V: ${{ steps.manifest.outputs.version }}
+        run: |
+          set -euo pipefail
+          .github/ensure-release.sh "$TAG" "$V"
+          gh release upload "$TAG" overhead-chrome-v"$V".zip overhead-firefox-v"$V".zip --clobber

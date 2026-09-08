@@ -21,6 +21,13 @@ on:
 permissions:
   contents: read
 
+# Two merges landing inside the gate->ci->tag window would both see the version
+# untagged and both reach the `tag` job. Serialise instead; never cancel — a
+# cancelled run is a half-released version to clean up.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   gate:
     runs-on: ubuntu-latest
@@ -105,24 +112,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Release notes from CHANGELOG
-        env:
-          V: ${{ needs.gate.outputs.version }}
-        run: |
-          set -euo pipefail
-          awk -v v="$V" '
-            $0 ~ "^## +" v "( |$)" { found = 1; next }
-            found && /^## / { exit }
-            found { print }
-          ' CHANGELOG.md > notes.md
-          # ci.yml requires the section on any release-bearing PR; a hand-pushed
-          # bump could still miss it, and an empty body beats a failed release.
-          if [ ! -s notes.md ]; then
-            echo "::warning::no '## $V' section in CHANGELOG.md — releasing without notes"
-            printf 'See CHANGELOG.md.\n' > notes.md
-          fi
-          cat notes.md
-
       # Idempotent on purpose. The gate resumes a half-finished release, so this
       # step runs again over a tag and/or release that may already exist — and
       # `git/refs` answers 422 "Reference already exists", which would deadlock
@@ -131,6 +120,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.gate.outputs.tag }}
+          V: ${{ needs.gate.outputs.version }}
         run: |
           set -euo pipefail
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
@@ -139,12 +129,7 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/git/refs" \
               -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" --jq .ref
           fi
-
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::notice::release $TAG already exists — leaving its notes alone"
-          else
-            gh release create "$TAG" --title "$TAG" --notes-file notes.md
-          fi
+          .github/ensure-release.sh "$TAG" "$V"
 
   # The zips, the signed Firefox .xpi (which also records the deploy) and the
   # Chrome Web Store push. Each attaches to the release the `tag` job just made.
@@ -156,12 +141,16 @@ jobs:
     permissions:
       contents: write
 
+  # Secrets are mapped, not inherited: `secrets: inherit` would hand the AMO
+  # credentials to the Chrome job and the Chrome credentials to the Firefox one.
   firefox:
     needs: [gate, tag]
     uses: ./.github/workflows/sign-firefox.yml
     with:
       tag: ${{ needs.gate.outputs.tag }}
-    secrets: inherit
+    secrets:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
     permissions:
       contents: write
       deployments: write
@@ -169,6 +158,12 @@ jobs:
   chrome:
     needs: [gate, tag]
     uses: ./.github/workflows/publish-chrome.yml
-    secrets: inherit
+    with:
+      tag: ${{ needs.gate.outputs.tag }}
+    secrets:
+      CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+      CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+      CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+      CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
     permissions:
       contents: read

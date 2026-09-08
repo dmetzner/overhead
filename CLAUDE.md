@@ -61,42 +61,45 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
 - **Per-browser manifest:** committed `manifest.json` is Chrome (`service_worker`);
   the CI Firefox build swaps in `background.scripts` via a `jq` step. Edit both
   builds in the workflows if the background block changes.
-- **Release is the merge.** A push to `main` whose `manifest.json` version has no
-  tag yet *is* a release: `release.yml` re-runs the CI gate, creates the tag and
-  the GitHub release (body = the matching `## X.Y.Z` CHANGELOG section), then
-  calls `pack.yml` (zips), `sign-firefox.yml` (unlisted `.xpi` via AMO, and it
-  records the deploy) and `publish-chrome.yml`. So a release PR bumps
-  `manifest.json` + `package.json` and adds a CHANGELOG section — nothing is
-  pushed or tagged by hand. A hand-pushed tag `vX.Y.Z` still works: all three
-  keep their `on: push: tags` trigger.
-- **Never just push the tag from a workflow.** A tag pushed with `GITHUB_TOKEN`
-  does not trigger `on: push: tags` runs (GitHub's no-recursive-runs rule), so
-  auto-tagging alone ships *nothing* while looking green. That is why
-  `release.yml` calls the three as reusable workflows (`workflow_call`) — and why
-  `pack.yml`/`sign-firefox.yml` take the tag as an `inputs.tag`: in a called
-  workflow `github.ref` is `main`, not the tag.
-- **`ci.yml`'s `release-readiness` job is what makes that true**: a PR touching a
-  shipped runtime file fails unless `manifest.json` moves forward (validated as
-  a Chrome-legal 1–4-part version), `package.json` matches, and a
-  `## <version>` CHANGELOG section exists. Docs, tests, CI and dependency bumps
-  touch no runtime file and release nothing.
-  **It only blocks a merge while it is a *required* status check on `main`** —
-  today only `test` is required, and `gh pr merge --auto` merges as soon as the
-  required ones pass. So `release.yml`'s gate re-checks it from the other side:
-  a push that changed runtime files while the version is already released is a
-  hard `::error::`, not a quiet no-op.
-- **A release is resumable, and every step of it is idempotent.** "Released"
-  means the tag *and* the release *and* both store zips exist — a tag alone
-  isn't it, or a run that died after tagging would make every retry a green
-  no-op. `release.yml`'s gate resumes such a release; the tag step reuses an
-  existing ref/release instead of dying on `422 Reference already exists`;
-  `sign-firefox.yml` already treats AMO's "version already exists" as a no-op.
+- **Release is the merge.** A push to `main` whose `manifest.json` version isn't
+  released yet *is* the release: `release.yml` re-runs the CI gate, tags, creates
+  the GitHub release (body = the matching `## X.Y.Z` CHANGELOG section, via
+  `.github/ensure-release.sh`), then calls `pack.yml`, `sign-firefox.yml` (AMO
+  `.xpi` + the deploy record) and `publish-chrome.yml`. A release PR therefore
+  bumps `manifest.json` + `package.json` and adds a CHANGELOG section; nothing is
+  tagged by hand. `concurrency: release` serialises two quick merges, and secrets
+  are *mapped* to the callees, not inherited.
+- **Never just push the tag from a workflow.** A `GITHUB_TOKEN` tag push does not
+  trigger `on: push: tags` (no-recursive-runs), so auto-tagging alone ships
+  *nothing* while going green — hence `workflow_call`, and hence `inputs.tag` on
+  all three (in a called workflow `github.ref` is `main`, not the tag).
+- **`ci.yml`'s `release-readiness` is what makes "every merge releases" true**: a
+  PR into `main` touching a path in `.github/runtime-paths.txt` fails unless
+  `manifest.json` moves forward (Chrome-legal 1-4-part version), `package.json`
+  matches, and a `## <version>` CHANGELOG section exists. Keep it a job that
+  always runs and decides inside the script — a skipped job leaves a required
+  check pending forever. **It blocks nothing until it is a required check on
+  `main`** (today only `test` is, and `gh pr merge --auto` merges as soon as the
+  required ones pass), so `release.yml`'s gate errors from the other side when a
+  push changed runtime files the already-released version cannot carry.
+- **A release is resumable; every step is idempotent.** "Released" means the tag
+  *and* the release *and* both zips — a tag alone isn't, or a run that died after
+  tagging turns every retry into a green no-op. The tag step reuses an existing
+  ref (`git/refs` answers 422 "already exists"), assets go up via `gh release
+  upload --clobber`, and AMO's "version already exists" is a no-op. Because AMO
+  will not re-sign a version, the `.xpi` is also kept as a workflow artifact and
+  its absence from the release is warned about.
+- **A hand-pushed tag still works, but it is the lesser path** — it skips
+  `release-readiness`, so nothing checked that the version was releasable. All
+  three shipping workflows re-check tag vs `manifest.json`, and all but `pack`
+  re-run lint+tests, so it cannot ship mismatched or untested code.
 
 ## Commands
 ```bash
 node --test                              # run the suite
 npx @biomejs/biome check .               # lint + format check (CI gate)
 npx @biomejs/biome check --write .       # apply fixes
+actionlint                               # lint the workflows (local only, brew)
 ```
 Biome lints JS/CSS/JSON only — `.html` and the vendored `docs/count.js` are
 excluded (see `biome.json`). CI (`ci.yml`) runs Biome + syntax + tests on every
