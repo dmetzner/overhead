@@ -1,0 +1,19 @@
+# The files and directories that make up the shipped extension — the single
+# source for "does this change need a version bump and a release?".
+#
+# Read by ci.yml's release-readiness job and release.yml's gate. The three
+# shipping workflows (pack.yml, sign-firefox.yml, publish-chrome.yml) still
+# carry their own zip/copy lists, because a shell list is not a regex —
+# test/ship-list.test.js fails if any of them drifts from this file.
+#
+# A trailing slash marks a directory (shipped whole). docs/ is NOT here: the
+# site deploys from Pages on every merge and is not part of the add-on.
+manifest.json
+sw.js
+rules.js
+share.js
+standard-headers.js
+popup.html
+popup.css
+popup/
+icons/

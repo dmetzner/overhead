@@ -48,12 +48,16 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
   entry point (manual add, inline edit, import, applyRules itself) must go
   through `headerNameError`/`headerValueError`/`urlRegexError`; don't add an
   input path that bypasses them.
-- **Ship-list is duplicated in five places**: three workflows (`pack.yml`,
-  `sign-firefox.yml`, `publish-chrome.yml`), the `ci.yml` syntax loop, and the
-  `runtime=` regex in `ci.yml`'s `release-readiness` job (which decides whether
-  a PR owes a version bump). Adding a runtime file/dir means updating all of
-  them (the `popup` directory is shipped as a whole). `share.js` is a shipped
-  runtime file — `docs/` is not.
+- **Ship-list: one declaration, three shell copies.**
+  `.github/runtime-paths.txt` is the declared set of shipped runtime paths (a
+  trailing `/` marks a directory shipped whole); `ci.yml`'s `release-readiness`
+  job and `release.yml`'s gate build their regex from it. The three shipping
+  workflows (`pack.yml`, `sign-firefox.yml`, `publish-chrome.yml`) still carry
+  their own shell lists, because a word list is not a regex —
+  `test/ship-list.test.js` fails if any of them drifts from the declaration.
+  Adding a runtime file means editing the declaration *and* the three lists (and
+  the `ci.yml` syntax loop, if it's JS). `share.js` is a shipped runtime file —
+  `docs/` is not.
 - **Per-browser manifest:** committed `manifest.json` is Chrome (`service_worker`);
   the CI Firefox build swaps in `background.scripts` via a `jq` step. Edit both
   builds in the workflows if the background block changes.
@@ -72,9 +76,21 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
   `pack.yml`/`sign-firefox.yml` take the tag as an `inputs.tag`: in a called
   workflow `github.ref` is `main`, not the tag.
 - **`ci.yml`'s `release-readiness` job is what makes that true**: a PR touching a
-  shipped runtime file fails unless `manifest.json` moves forward,
-  `package.json` matches, and a `## <version>` CHANGELOG section exists. Docs,
-  tests, CI and dependency bumps touch no runtime file and release nothing.
+  shipped runtime file fails unless `manifest.json` moves forward (validated as
+  a Chrome-legal 1–4-part version), `package.json` matches, and a
+  `## <version>` CHANGELOG section exists. Docs, tests, CI and dependency bumps
+  touch no runtime file and release nothing.
+  **It only blocks a merge while it is a *required* status check on `main`** —
+  today only `test` is required, and `gh pr merge --auto` merges as soon as the
+  required ones pass. So `release.yml`'s gate re-checks it from the other side:
+  a push that changed runtime files while the version is already released is a
+  hard `::error::`, not a quiet no-op.
+- **A release is resumable, and every step of it is idempotent.** "Released"
+  means the tag *and* the release *and* both store zips exist — a tag alone
+  isn't it, or a run that died after tagging would make every retry a green
+  no-op. `release.yml`'s gate resumes such a release; the tag step reuses an
+  existing ref/release instead of dying on `422 Reference already exists`;
+  `sign-firefox.yml` already treats AMO's "version already exists" as a no-op.
 
 ## Commands
 ```bash

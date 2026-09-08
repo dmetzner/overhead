@@ -1,0 +1,71 @@
+import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import test from "node:test";
+
+// The set of files that make up the shipped extension is written down in four
+// places: `.github/runtime-paths.txt` (which decides whether a change owes a
+// version bump and a release) and one shell list in each of the three shipping
+// workflows. A shell word list is not a regex, so they cannot literally be the
+// same string — but they must describe the same set, or the estate lies in one
+// of two directions: a new runtime file that ships but never triggers a release,
+// or one that forces releases while never reaching a store zip.
+//
+// This test is what makes that drift fail CI instead of shipping.
+
+const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+
+/** The declared source of truth, with directory markers stripped. */
+const declared = new Set(
+  read(".github/runtime-paths.txt")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"))
+    .map((l) => l.replace(/\/$/, "")),
+);
+
+/** Pull one shell word list out of a workflow, by the line that carries it. */
+function shipList(workflow, pattern, drop = []) {
+  const text = read(`.github/workflows/${workflow}`);
+  const m = text.match(pattern);
+  assert.ok(
+    m,
+    `could not find the ship-list in ${workflow} — the line shape changed, so this test can no longer see what that workflow ships. Re-anchor the pattern.`,
+  );
+  return new Set(
+    m[1]
+      .trim()
+      .split(/\s+/)
+      .filter((w) => !drop.includes(w)),
+  );
+}
+
+const lists = {
+  // shared="sw.js rules.js …"  — plus manifest.json, added on the zip line
+  "pack.yml": new Set([...shipList("pack.yml", /^\s*shared="([^"]+)"/m), "manifest.json"]),
+  // cp -r manifest.json … dist/
+  "sign-firefox.yml": shipList("sign-firefox.yml", /^\s*cp -r (.+) dist\/$/m),
+  // zip -r "overhead-chrome.zip" \\\n  manifest.json … \\
+  "publish-chrome.yml": shipList("publish-chrome.yml", /^\s*(manifest\.json .+?) \\$/m),
+};
+
+for (const [workflow, shipped] of Object.entries(lists)) {
+  test(`${workflow} ships exactly the declared runtime paths`, () => {
+    const missing = [...declared].filter((p) => !shipped.has(p));
+    const extra = [...shipped].filter((p) => !declared.has(p));
+    assert.deepEqual(
+      { missing, extra },
+      { missing: [], extra: [] },
+      `${workflow} disagrees with .github/runtime-paths.txt — ` +
+        `missing from ${workflow}: [${missing}]; not declared as runtime: [${extra}]`,
+    );
+  });
+}
+
+test("the declared runtime paths all exist in the repo", () => {
+  for (const p of declared) {
+    assert.ok(
+      existsSync(new URL(`../${p}`, import.meta.url)),
+      `.github/runtime-paths.txt lists "${p}", which is not in the repo`,
+    );
+  }
+});

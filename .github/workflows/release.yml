@@ -33,19 +33,61 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Is this version already tagged?
+      - name: Is this version released yet?
         id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           version=$(node -p "require('./manifest.json').version")
+          tag="v$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
-            echo "::notice::v$version is already tagged — nothing to release"
-            echo "release=false" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          # "Released" means the tag AND the GitHub release AND both store zips
+          # exist — not merely the tag. A half-finished release (tag created,
+          # then pack died) must be resumable: every job below is idempotent, so
+          # a re-run drives it to completion. Deciding on the tag alone would
+          # make the retry a *green no-op* that ships nothing, which is the one
+          # outcome this whole workflow exists to prevent.
+          release=true
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            zips=$(gh release view "$tag" --json assets \
+                     --jq '[.assets[].name | select(endswith(".zip"))] | length' 2>/dev/null || echo 0)
+            if [ "${zips:-0}" -ge 2 ]; then
+              release=false
+            else
+              echo "::warning::$tag is tagged but its release carries ${zips:-0} zip(s) — resuming the release"
+            fi
+          fi
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+          if [ "$release" = true ]; then
+            echo "::notice::releasing $tag"
+            exit 0
+          fi
+
+          # Nothing to release. Correct for a docs/CI/test/dependency merge —
+          # and wrong for a merge that changed the extension, which then reaches
+          # no user. ci.yml's release-readiness job is meant to stop that on the
+          # PR, but a check only blocks a merge while it is a *required* status
+          # check on main (and `gh pr merge --auto` merges the moment the
+          # required ones pass), and with `strict` off a stale base can slip a
+          # duplicate bump through anyway. So main says it out loud too.
+          runtime=$(awk '!/^[[:space:]]*(#|$)/ {
+            gsub(/\./, "\\.");
+            print (/\/$/ ? "^" $0 : "^" $0 "$")
+          }' .github/runtime-paths.txt | paste -sd '|' -)
+
+          if [ -n "${BEFORE:-}" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE "$runtime"; then
+              echo "::error::this push changed shipped runtime files, but $tag is already released — the change reaches no user. Bump manifest.json + package.json, add a CHANGELOG section, and merge that."
+              exit 1
+            fi
+            echo "::notice::$tag is already released and this push changed no runtime file — nothing to do"
           else
-            echo "::notice::v$version has no tag yet — releasing"
-            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$tag is already released; no pushed-commit range to check (manual run or force-push)"
           fi
 
   # Never ship what the suite has not passed, even though the same gate ran on
@@ -81,15 +123,28 @@ jobs:
           fi
           cat notes.md
 
+      # Idempotent on purpose. The gate resumes a half-finished release, so this
+      # step runs again over a tag and/or release that may already exist — and
+      # `git/refs` answers 422 "Reference already exists", which would deadlock
+      # the version it half-shipped.
       - name: Tag and create the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.gate.outputs.tag }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" --jq .ref
-          gh release create "$TAG" --title "$TAG" --notes-file notes.md
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::notice::$TAG already exists — reusing it"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" --jq .ref
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::notice::release $TAG already exists — leaving its notes alone"
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md
+          fi
 
   # The zips, the signed Firefox .xpi (which also records the deploy) and the
   # Chrome Web Store push. Each attaches to the release the `tag` job just made.

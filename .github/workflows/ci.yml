@@ -66,9 +66,14 @@ jobs:
 
           base_v=$(git show "origin/$BASE:manifest.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
 
-          # The set pack.yml / sign-firefox.yml / publish-chrome.yml actually
-          # ship. Keep in step with their ship-lists (see CLAUDE.md).
-          runtime='^(manifest\.json|sw\.js|rules\.js|share\.js|standard-headers\.js|popup\.html|popup\.css|popup/|icons/)'
+          # What counts as a shipped runtime file lives in one file, not in a
+          # regex per workflow; test/ship-list.test.js keeps it in step with
+          # what the three shipping workflows actually zip.
+          runtime=$(awk '!/^[[:space:]]*(#|$)/ {
+            gsub(/\./, "\\.");
+            print (/\/$/ ? "^" $0 : "^" $0 "$")
+          }' .github/runtime-paths.txt | paste -sd '|' -)
+          echo "Runtime paths: $runtime"
 
           changed=$(git diff --name-only "origin/$BASE...HEAD")
           echo "Changed files:"; echo "$changed" | sed 's/^/  /'
@@ -83,10 +88,23 @@ jobs:
             exit 1
           fi
 
+          # Chrome allows one to four dot-separated integers, each 0-65535, and
+          # nothing else — no prerelease suffix. Validating the shape here means
+          # a version the store would reject fails on the PR, not at publish;
+          # padding to four parts makes the comparison numeric and total
+          # (2.10.0 > 2.9.0, and 2.9 is not "forward" from 2.9.0).
           node -e '
-            const [a, b] = process.argv.slice(1).map((v) => v.split(".").map(Number));
-            const cmp = a.findIndex((n, i) => n !== b[i]);
-            if (cmp === -1 || a[cmp] < b[cmp]) {
+            const parse = (v, where) => {
+              if (!/^(0|[1-9]\d{0,4})(\.(0|[1-9]\d{0,4})){0,3}$/.test(v) || v.split(".").some((n) => Number(n) > 65535)) {
+                console.log(`::error file=manifest.json::${where} version "${v}" is not a Chrome-legal version (1-4 dot-separated integers, each 0-65535, no leading zeros)`);
+                process.exit(1);
+              }
+              return [...v.split(".").map(Number), 0, 0, 0].slice(0, 4);
+            };
+            const head = parse(process.argv[1], "manifest.json");
+            const base = parse(process.argv[2], "the base branch");
+            const at = head.findIndex((n, i) => n !== base[i]);
+            if (at === -1 || head[at] < base[at]) {
               console.log(`::error file=manifest.json::version ${process.argv[1]} does not go forward from ${process.argv[2]}`);
               process.exit(1);
             }
