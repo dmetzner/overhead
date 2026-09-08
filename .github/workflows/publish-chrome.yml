@@ -91,7 +91,9 @@ jobs:
       - name: Build Chrome zip
         if: ${{ env.CWS_EXTENSION_ID != '' }}
         run: |
-          zip -r "overhead-chrome.zip" \
+          # -MM so a missing runtime file fails instead of shipping a package
+          # without it — see pack.yml.
+          zip -MM -r "overhead-chrome.zip" \
             manifest.json sw.js rules.js share.js standard-headers.js popup.html popup popup.css icons \
             -x "*.DS_Store"
 

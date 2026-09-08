@@ -76,13 +76,19 @@ jobs:
         run: |
           shared="sw.js rules.js share.js standard-headers.js popup.html popup popup.css icons"
 
+          # -MM: plain `zip` omits a name it cannot find and still exits 0, so a
+          # ship-list naming a file the checked-out tree lacks would build a
+          # store package missing a runtime file and go green. The workflow comes
+          # from the caller's commit while the tree comes from the tag, so those
+          # two can disagree.
+          #
           # Chrome — manifest as committed
-          zip -r "overhead-chrome-v${V}.zip" manifest.json $shared -x "*.DS_Store"
+          zip -MM -r "overhead-chrome-v${V}.zip" manifest.json $shared -x "*.DS_Store"
 
           # Firefox — inject background.scripts (drop service_worker)
           mkdir -p ff && cp -r $shared ff/
           jq '.background = {"scripts": ["sw.js"], "type": "module"}' manifest.json > ff/manifest.json
-          (cd ff && zip -r "../overhead-firefox-v${V}.zip" . -x "*.DS_Store")
+          (cd ff && zip -MM -r "../overhead-firefox-v${V}.zip" . -x "*.DS_Store")
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
