@@ -116,9 +116,12 @@ jobs:
           # package whose version is not greater than the one it holds. Uploading
           # blindly would make every *resumed* release fail here forever (the
           # release chain can re-enter a half-finished release), so ask first.
+          # Tolerate a failed query — an item that has never been published may
+          # not answer this, and "unknown" must mean "try the upload", not a red
+          # first publish.
           held=$(curl -fsS \
             -H "Authorization: Bearer $token" -H "x-goog-api-version: 2" \
-            "$api/$CWS_EXTENSION_ID?projection=DRAFT" | jq -r '.crxVersion // empty')
+            "$api/$CWS_EXTENSION_ID?projection=DRAFT" | jq -r '.crxVersion // empty') || held=""
 
           if [ "$held" = "$v" ]; then
             echo "::notice::the Web Store already holds $v — skipping the upload"

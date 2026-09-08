@@ -9,6 +9,10 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_call:
+  # So the gate can be run on demand against any ref — useful when GitHub does
+  # not deliver a `pull_request` run, which is the one case where "CI is green"
+  # cannot be taken on trust.
+  workflow_dispatch:
 
 permissions:
   contents: read
