@@ -62,37 +62,28 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
   the CI Firefox build swaps in `background.scripts` via a `jq` step. Edit both
   builds in the workflows if the background block changes.
 - **Release is the merge.** A push to `main` whose `manifest.json` version isn't
-  released yet *is* the release: `release.yml` re-runs the CI gate, tags, creates
-  the GitHub release (body = the matching `## X.Y.Z` CHANGELOG section, via
-  `.github/ensure-release.sh`), then calls `pack.yml`, `sign-firefox.yml` (AMO
-  `.xpi` + the deploy record) and `publish-chrome.yml`. A release PR therefore
-  bumps `manifest.json` + `package.json` and adds a CHANGELOG section; nothing is
-  tagged by hand. `concurrency: release` serialises two quick merges, and secrets
-  are *mapped* to the callees, not inherited.
+  released yet *is* the release: `release.yml` tags, creates the GitHub release
+  and calls `pack.yml` / `sign-firefox.yml` / `publish-chrome.yml`. A release PR
+  bumps `manifest.json` + `package.json` and adds a `## X.Y.Z` CHANGELOG
+  section; nothing is tagged by hand. A hand-pushed tag still works but skips
+  the bump gate. → [`.github/RELEASE.md`](.github/RELEASE.md)
 - **Never just push the tag from a workflow.** A `GITHUB_TOKEN` tag push does not
   trigger `on: push: tags` (no-recursive-runs), so auto-tagging alone ships
-  *nothing* while going green — hence `workflow_call`, and hence `inputs.tag` on
-  all three (in a called workflow `github.ref` is `main`, not the tag).
-- **`ci.yml`'s `release-readiness` is what makes "every merge releases" true**: a
-  PR into `main` touching a path in `.github/runtime-paths.txt` fails unless
-  `manifest.json` moves forward (Chrome-legal 1-4-part version), `package.json`
-  matches, and a `## <version>` CHANGELOG section exists. Keep it a job that
-  always runs and decides inside the script — a skipped job leaves a required
-  check pending forever. **It blocks nothing until it is a required check on
-  `main`** (today only `test` is, and `gh pr merge --auto` merges as soon as the
-  required ones pass), so `release.yml`'s gate errors from the other side when a
-  push changed runtime files the already-released version cannot carry.
-- **A release is resumable; every step is idempotent.** "Released" means the tag
-  *and* the release *and* both zips — a tag alone isn't, or a run that died after
-  tagging turns every retry into a green no-op. The tag step reuses an existing
-  ref (`git/refs` answers 422 "already exists"), assets go up via `gh release
-  upload --clobber`, and AMO's "version already exists" is a no-op. Because AMO
-  will not re-sign a version, the `.xpi` is also kept as a workflow artifact and
-  its absence from the release is warned about.
-- **A hand-pushed tag still works, but it is the lesser path** — it skips
-  `release-readiness`, so nothing checked that the version was releasable. All
-  three shipping workflows re-check tag vs `manifest.json`, and all but `pack`
-  re-run lint+tests, so it cannot ship mismatched or untested code.
+  *nothing* while going green. Hence `workflow_call`, and hence `inputs.tag` on
+  all three — in a called workflow `github.ref` is `main`, not the tag.
+- **Every shipper checks out the TAG, never the pushed commit.** Same commit on a
+  first-pass release, different on a resume; building `github.sha` would attach
+  a later tree's assets to an older version and misdate the deploy record.
+- **A release is resumable, and every step of it is idempotent.** "Released"
+  means the tag *and* the release *and* both zips — a tag alone isn't, or a run
+  that died after tagging makes every retry a green no-op. Don't reintroduce a
+  `|| echo 0` on the zip count: `--clobber` deletes before it uploads, so a
+  guessed zero destroys a good release.
+- **`ci.yml`'s `release-readiness` is what makes "every merge releases" true**,
+  and it blocks nothing until it is a *required* check on `main`. Keep it a job
+  that always runs and decides inside the script — a skipped job leaves a
+  required check pending forever. `release.yml`'s `guard` job is its `main`-side
+  twin and is deliberately not a dependency of the release chain.
 
 ## Commands
 ```bash

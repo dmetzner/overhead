@@ -60,8 +60,11 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # The TAGGED tree, not the pushed commit — see pack.yml.
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.run == 'true'
@@ -149,7 +152,13 @@ jobs:
           V: ${{ steps.manifest.outputs.version }}
         run: |
           set -euo pipefail
-          .github/ensure-release.sh "$TAG" "$V"
+          # The checked-out tree is the tag's, which for a tag predating this
+          # script does not carry it — fall back rather than fail the attach.
+          if [ -x .github/ensure-release.sh ]; then
+            .github/ensure-release.sh "$TAG" "$V"
+          elif ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
           gh release upload "$TAG" web-ext-artifacts/*.xpi --clobber
 
       # AMO answering "version already exists" is a no-op for signing, but it is
@@ -185,7 +194,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
-          id=$(jq -n --arg ref "$GITHUB_SHA" --arg env "amo" \
+          # The checked-out tag's commit, not $GITHUB_SHA: on a resume the two
+          # differ, and the record must date the release, not the later push.
+          id=$(jq -n --arg ref "$(git rev-parse HEAD)" --arg env "amo" \
                  '{ref:$ref, environment:$env, task:"deploy", auto_merge:false,
                    required_contexts:[], production_environment:true,
                    description:"recorded by the deploy workflow"}' \

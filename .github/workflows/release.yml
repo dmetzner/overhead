@@ -1,18 +1,21 @@
 name: Release
 
-# The whole release, on merge. A push to main whose manifest.json version has no
-# tag yet is a release: this workflow re-runs the gate, creates the tag and the
-# GitHub release (notes lifted from CHANGELOG.md), then calls the three shipping
-# workflows directly.
+# The whole release, on merge. A push to main whose manifest.json version is not
+# released yet *is* the release: re-run the gate, create the tag and the GitHub
+# release (notes from the tagged CHANGELOG section), then call the three
+# shipping workflows.
 #
 # Why it *calls* them instead of just pushing the tag: a tag pushed with
 # GITHUB_TOKEN does not trigger `on: push: tags` workflows (GitHub's
-# no-recursive-runs rule). Auto-tagging alone would look like it worked and ship
-# nothing. Calling them as reusable workflows needs no PAT secret, and they keep
-# their own tag triggers so a hand-pushed tag still works exactly as before.
+# no-recursive-runs rule), so auto-tagging alone would look like it worked and
+# ship nothing. Calling them as reusable workflows needs no PAT secret, and they
+# keep their own tag triggers so a hand-pushed tag still works.
 #
-# A merge with no bump ends at the `gate` job — see ci.yml's release-readiness
-# job, which is what stops a runtime change from landing without one.
+# A merge with no bump stops at `gate`. Whether that is correct is `guard`'s
+# question, and whether it should have been stopped on the PR is
+# ci.yml's release-readiness job.
+#
+# The reasoning, and the traps that shaped it: .github/RELEASE.md
 on:
   push:
     branches: [main]
@@ -29,6 +32,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Always runs, and deliberately NOT a dependency of the release chain. A push
+  # that changed shipped runtime files while this version is already tagged
+  # ships nothing — the shippers build the tag's tree, not this push — and that
+  # has to go red even while a resume is finishing the tagged version off.
+  #
+  # It is the `main`-side twin of ci.yml's release-readiness job, which blocks
+  # nothing until it is a required status check.
+  guard:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: A runtime change must not land on an already-tagged version
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          tag="v$(node -p "require('./manifest.json').version")"
+
+          if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::notice::$tag is not tagged yet — this push is what gets released"
+            exit 0
+          fi
+          if [ -z "${BEFORE:-}" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "::notice::$tag is tagged; no pushed-commit range to check (force-push or a new branch)"
+            exit 0
+          fi
+
+          runtime=$(awk '!/^[[:space:]]*(#|$)/ {
+            gsub(/\./, "\\.");
+            print (/\/$/ ? "^" $0 : "^" $0 "$")
+          }' .github/runtime-paths.txt | paste -sd '|' -)
+
+          if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE "$runtime"; then
+            echo "::error::this push changed shipped runtime files, but $tag is already tagged — the shippers build the tag's tree, so the change reaches no user. Bump manifest.json + package.json, add a CHANGELOG section, and merge that."
+            exit 1
+          fi
+          echo "::notice::$tag is already tagged and this push changed no shipped runtime file"
+
   gate:
     runs-on: ubuntu-latest
     outputs:
@@ -44,7 +89,6 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           version=$(node -p "require('./manifest.json').version")
@@ -52,50 +96,34 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-          # "Released" means the tag AND the GitHub release AND both store zips
-          # exist — not merely the tag. A half-finished release (tag created,
-          # then pack died) must be resumable: every job below is idempotent, so
-          # a re-run drives it to completion. Deciding on the tag alone would
-          # make the retry a *green no-op* that ships nothing, which is the one
-          # outcome this whole workflow exists to prevent.
+          # "Released" means the tag AND the release AND both store zips exist —
+          # not merely the tag. A half-finished release (tag created, then pack
+          # died) must be resumable: every job below is idempotent and builds the
+          # tagged tree, so a re-run drives it to completion. Deciding on the tag
+          # alone would make the retry a *green no-op* that ships nothing, which
+          # is the one outcome this whole workflow exists to prevent.
           release=true
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            zips=$(gh release view "$tag" --json assets \
-                     --jq '[.assets[].name | select(endswith(".zip"))] | length' 2>/dev/null || echo 0)
-            if [ "${zips:-0}" -ge 2 ]; then
-              release=false
+            if gh release view "$tag" >/dev/null 2>&1; then
+              # No `|| echo 0` fallback here: guessing zero when the API call
+              # merely failed would resume a *complete* release, and
+              # `gh release upload --clobber` deletes an asset before it
+              # re-uploads it. Better to go red and be re-run.
+              zips=$(gh release view "$tag" --json assets \
+                       --jq '[.assets[].name | select(endswith(".zip"))] | length')
             else
-              echo "::warning::$tag is tagged but its release carries ${zips:-0} zip(s) — resuming the release"
+              zips=0
             fi
+            if [ "$zips" -ge 2 ]; then
+              release=false
+              echo "::notice::$tag is released with $zips zip(s) — nothing to do"
+            else
+              echo "::warning::$tag is tagged but its release carries $zips zip(s) — resuming it from $(git rev-parse --short "refs/tags/$tag^{commit}"), not from this push"
+            fi
+          else
+            echo "::notice::releasing $tag from this push"
           fi
           echo "release=$release" >> "$GITHUB_OUTPUT"
-
-          if [ "$release" = true ]; then
-            echo "::notice::releasing $tag"
-            exit 0
-          fi
-
-          # Nothing to release. Correct for a docs/CI/test/dependency merge —
-          # and wrong for a merge that changed the extension, which then reaches
-          # no user. ci.yml's release-readiness job is meant to stop that on the
-          # PR, but a check only blocks a merge while it is a *required* status
-          # check on main (and `gh pr merge --auto` merges the moment the
-          # required ones pass), and with `strict` off a stale base can slip a
-          # duplicate bump through anyway. So main says it out loud too.
-          runtime=$(awk '!/^[[:space:]]*(#|$)/ {
-            gsub(/\./, "\\.");
-            print (/\/$/ ? "^" $0 : "^" $0 "$")
-          }' .github/runtime-paths.txt | paste -sd '|' -)
-
-          if [ -n "${BEFORE:-}" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            if git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qE "$runtime"; then
-              echo "::error::this push changed shipped runtime files, but $tag is already released — the change reaches no user. Bump manifest.json + package.json, add a CHANGELOG section, and merge that."
-              exit 1
-            fi
-            echo "::notice::$tag is already released and this push changed no runtime file — nothing to do"
-          else
-            echo "::notice::$tag is already released; no pushed-commit range to check (manual run or force-push)"
-          fi
 
   # Never ship what the suite has not passed, even though the same gate ran on
   # this commit's own push — a release is the one place worth the duplicate.
@@ -129,7 +157,16 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/git/refs" \
               -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" --jq .ref
           fi
-          .github/ensure-release.sh "$TAG" "$V"
+
+          # Take the release notes from the TAGGED CHANGELOG, like the shippers
+          # take their source from the tagged tree. Identical on a first pass; on
+          # a resume this is the difference between the notes for the version
+          # being released and the notes of whatever landed since. Read out of
+          # the tag rather than checked out, so the *script* stays this commit's.
+          git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
+          notes="$RUNNER_TEMP/tagged-changelog.md"
+          git show "refs/tags/$TAG:CHANGELOG.md" > "$notes" 2>/dev/null || cp CHANGELOG.md "$notes"
+          .github/ensure-release.sh "$TAG" "$V" "$notes"
 
   # The zips, the signed Firefox .xpi (which also records the deploy) and the
   # Chrome Web Store push. Each attaches to the release the `tag` job just made.

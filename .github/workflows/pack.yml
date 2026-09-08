@@ -27,7 +27,13 @@ jobs:
   pack:
     runs-on: ubuntu-latest
     steps:
+      # The TAGGED tree, not the pushed commit. On a first-pass release they are
+      # the same; on a resume (release.yml can re-enter a half-finished release
+      # from a later push) they are not, and building `github.sha` would attach
+      # assets built from the wrong source to that version's release.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Read version from manifest
         id: manifest
@@ -96,5 +102,11 @@ jobs:
           V: ${{ steps.manifest.outputs.version }}
         run: |
           set -euo pipefail
-          .github/ensure-release.sh "$TAG" "$V"
+          # The checked-out tree is the tag's, which for a tag predating this
+          # script does not carry it — fall back rather than fail the attach.
+          if [ -x .github/ensure-release.sh ]; then
+            .github/ensure-release.sh "$TAG" "$V"
+          elif ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
           gh release upload "$TAG" overhead-chrome-v"$V".zip overhead-firefox-v"$V".zip --clobber

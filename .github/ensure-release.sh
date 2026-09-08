@@ -2,7 +2,11 @@
 # Ensure the GitHub release for a tag exists, with the matching CHANGELOG
 # section as its notes.
 #
-# Usage: .github/ensure-release.sh <tag> <version>
+# Usage: .github/ensure-release.sh <tag> <version> [changelog-path]
+#
+# The changelog path defaults to CHANGELOG.md in the working tree. release.yml
+# passes the *tagged* CHANGELOG instead, because on a resume the working tree is
+# a later commit than the version being released.
 #
 # Three workflows need the release to exist before they can attach an asset,
 # and on a hand-pushed tag they run in parallel — so this is idempotent and
@@ -13,6 +17,7 @@ set -euo pipefail
 
 tag="${1:?tag required}"
 version="${2:?version required}"
+changelog="${3:-CHANGELOG.md}"
 
 if gh release view "$tag" >/dev/null 2>&1; then
   echo "::notice::release $tag already exists — leaving its notes alone"
@@ -20,11 +25,12 @@ if gh release view "$tag" >/dev/null 2>&1; then
 fi
 
 notes=$(mktemp)
+trap 'rm -f "$notes"' EXIT
 awk -v v="$version" '
   $0 ~ "^## +" v "( |$)" { found = 1; next }
   found && /^## / { exit }
   found { print }
-' CHANGELOG.md > "$notes"
+' "$changelog" > "$notes"
 
 # ci.yml requires the section on any release-bearing PR, but a hand-pushed bump
 # can still miss it, and an empty body beats a failed release.
