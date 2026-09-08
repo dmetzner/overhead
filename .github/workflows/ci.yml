@@ -2,11 +2,17 @@ name: CI
 
 # Tags run the same gate as branches — a release must never ship code the
 # suite hasn't seen (the sign/pack workflows additionally gate themselves).
+# `workflow_call` lets release.yml re-run this exact gate before it ships.
 on:
   push:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_call:
+  # So the gate can be run on demand against any ref — useful when GitHub does
+  # not deliver a `pull_request` run, which is the one case where "CI is green"
+  # cannot be taken on trust.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,5 +32,110 @@ jobs:
           for f in rules.js share.js sw.js standard-headers.js popup/*.js; do
             node --check "$f"
           done
+          # Three workflows call these, and a syntax error there only surfaces
+          # mid-release.
+          for f in .github/*.sh; do
+            [ -e "$f" ] || continue
+            bash -n "$f"
+          done
       - name: Tests
         run: node --test
+
+  # A merge to main releases if and only if it carries a version bump
+  # (release.yml tags whatever manifest.json says and ships it). So a pull
+  # request that changes a *shipped runtime file* without a bump would land
+  # code that never reaches a user — this job is what makes "every merge that
+  # changes the extension releases it" true rather than aspirational.
+  #
+  # Docs, tests, CI and dependency bumps touch no runtime file, so they pass
+  # untouched and release nothing.
+  #
+  # This job is meant to become a *required* status check, so it must always run
+  # and always report: the non-main case is waved through inside the script
+  # rather than by a job-level `if`, because a job that never runs leaves a
+  # required check pending forever.
+  #
+  # It does NOT run on `merge_group`; if a merge queue is ever enabled here the
+  # gate silently vanishes and `github.base_ref` is empty, so the script needs
+  # reworking before turning one on.
+  release-readiness:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version bump, CHANGELOG and package.json agree
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          # A stacked PR (feature -> feature) releases nothing, so it owes no
+          # bump; the gate applies when that stack reaches main.
+          if [ "$BASE" != "main" ]; then
+            echo "::notice::base is '$BASE', not main — a merge there releases nothing, so no bump is required"
+            exit 0
+          fi
+
+          head_v=$(node -p "require('./manifest.json').version")
+          pkg_v=$(node -p "require('./package.json').version")
+
+          # Unconditional: the two version fields are one number in two files.
+          # pack.yml and sign-firefox.yml both read manifest.json, so a stale
+          # package.json is only ever a lie about what is released.
+          if [ "$head_v" != "$pkg_v" ]; then
+            echo "::error file=package.json::package.json version $pkg_v != manifest.json version $head_v"
+            exit 1
+          fi
+
+          base_v=$(git show "origin/$BASE:manifest.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+
+          # What counts as a shipped runtime file lives in one declaration and
+          # one builder; test/ship-list.test.js keeps both in step with what the
+          # three shipping workflows actually zip.
+          runtime=$(.github/runtime-regex.sh)
+          echo "Runtime paths: $runtime"
+
+          changed=$(git diff --name-only "origin/$BASE...HEAD")
+          echo "Changed files:"; echo "$changed" | sed 's/^/  /'
+
+          if ! grep -qE "$runtime" <<< "$changed"; then
+            echo "::notice::no shipped runtime file changed — no version bump required (this merge releases nothing)"
+            exit 0
+          fi
+
+          if [ "$head_v" = "$base_v" ]; then
+            echo "::error file=manifest.json::shipped runtime files changed but the version is still $head_v — bump manifest.json + package.json and add a '## $head_v'-style CHANGELOG section, or the merge ships nothing"
+            exit 1
+          fi
+
+          # Chrome allows one to four dot-separated integers, each 0-65535, and
+          # nothing else — no prerelease suffix. Validating the shape here means
+          # a version the store would reject fails on the PR, not at publish;
+          # padding to four parts makes the comparison numeric and total
+          # (2.10.0 > 2.9.0, and 2.9 is not "forward" from 2.9.0).
+          node -e '
+            const parse = (v, where) => {
+              if (!/^(0|[1-9]\d{0,4})(\.(0|[1-9]\d{0,4})){0,3}$/.test(v) || v.split(".").some((n) => Number(n) > 65535)) {
+                console.log(`::error file=manifest.json::${where} version "${v}" is not a Chrome-legal version (1-4 dot-separated integers, each 0-65535, no leading zeros)`);
+                process.exit(1);
+              }
+              return [...v.split(".").map(Number), 0, 0, 0].slice(0, 4);
+            };
+            const head = parse(process.argv[1], "manifest.json");
+            const base = parse(process.argv[2], "the base branch");
+            const at = head.findIndex((n, i) => n !== base[i]);
+            if (at === -1 || head[at] < base[at]) {
+              console.log(`::error file=manifest.json::version ${process.argv[1]} does not go forward from ${process.argv[2]}`);
+              process.exit(1);
+            }
+          ' "$head_v" "$base_v"
+
+          if ! grep -qE "^## +${head_v//./\\.}( |$)" CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::no '## $head_v' section — release.yml uses it as the GitHub release notes"
+            exit 1
+          fi
+
+          echo "::notice::$base_v -> $head_v, CHANGELOG section present — this merge will release v$head_v"

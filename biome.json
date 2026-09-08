@@ -7,7 +7,8 @@
       "!dist",
       "!web-ext-artifacts",
       "!docs/count.js",
-      "!**/*.html"
+      "!**/*.html",
+      "!.claude"
     ]
   },
   "formatter": {

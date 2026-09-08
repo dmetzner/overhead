@@ -48,26 +48,54 @@ MV3 browser extension (Chrome + Firefox) that injects HTTP **request** headers v
   entry point (manual add, inline edit, import, applyRules itself) must go
   through `headerNameError`/`headerValueError`/`urlRegexError`; don't add an
   input path that bypasses them.
-- **Ship-list is duplicated in three workflows** (`pack.yml`,
-  `sign-firefox.yml`, `publish-chrome.yml`) plus the `ci.yml` syntax loop:
-  adding a runtime file/dir means updating all of them (the `popup` directory is
-  shipped as a whole). `share.js` is a shipped runtime file — `docs/` is not.
+- **Ship-list: one declaration, three shell copies.**
+  `.github/runtime-paths.txt` is the declared set of shipped runtime paths (a
+  trailing `/` marks a directory shipped whole); `ci.yml`'s `release-readiness`
+  job and `release.yml`'s gate build their regex from it. The three shipping
+  workflows (`pack.yml`, `sign-firefox.yml`, `publish-chrome.yml`) still carry
+  their own shell lists, because a word list is not a regex —
+  `test/ship-list.test.js` fails if any of them drifts from the declaration.
+  Adding a runtime file means editing the declaration *and* the three lists (and
+  the `ci.yml` syntax loop, if it's JS). `share.js` is a shipped runtime file —
+  `docs/` is not.
 - **Per-browser manifest:** committed `manifest.json` is Chrome (`service_worker`);
   the CI Firefox build swaps in `background.scripts` via a `jq` step. Edit both
   builds in the workflows if the background block changes.
-- **Release:** push tag `vX.Y.Z` matching `manifest.json`. `pack.yml` builds the
-  two zips; `sign-firefox.yml` signs the unlisted `.xpi` via AMO (needs
-  `AMO_JWT_*` secrets). Fork gate is cleared, so tag push auto-runs both.
+- **Release is the merge.** A push to `main` whose `manifest.json` version isn't
+  released yet *is* the release: `release.yml` tags, creates the GitHub release
+  and calls `pack.yml` / `sign-firefox.yml` / `publish-chrome.yml`. A release PR
+  bumps `manifest.json` + `package.json` and adds a `## X.Y.Z` CHANGELOG
+  section; nothing is tagged by hand. A hand-pushed tag still works but skips
+  the bump gate. → [`.github/RELEASE.md`](.github/RELEASE.md)
+- **Never just push the tag from a workflow.** A `GITHUB_TOKEN` tag push does not
+  trigger `on: push: tags` (no-recursive-runs), so auto-tagging alone ships
+  *nothing* while going green. Hence `workflow_call`, and hence `inputs.tag` on
+  all three — in a called workflow `github.ref` is `main`, not the tag.
+- **Every shipper checks out the TAG, never the pushed commit.** Same commit on a
+  first-pass release, different on a resume; building `github.sha` would attach
+  a later tree's assets to an older version and misdate the deploy record.
+- **A release is resumable, and every step of it is idempotent.** "Released"
+  means the tag *and* the release *and* both zips — a tag alone isn't, or a run
+  that died after tagging makes every retry a green no-op. Don't reintroduce a
+  `|| echo 0` on the zip count: `--clobber` deletes before it uploads, so a
+  guessed zero destroys a good release.
+- **`ci.yml`'s `release-readiness` is what makes "every merge releases" true**,
+  and it blocks nothing until it is a *required* check on `main`. Keep it a job
+  that always runs and decides inside the script — a skipped job leaves a
+  required check pending forever. `release.yml`'s `guard` job is its `main`-side
+  twin and is deliberately not a dependency of the release chain.
 
 ## Commands
 ```bash
 node --test                              # run the suite
 npx @biomejs/biome check .               # lint + format check (CI gate)
 npx @biomejs/biome check --write .       # apply fixes
+actionlint                               # lint the workflows (local only, brew)
 ```
 Biome lints JS/CSS/JSON only — `.html` and the vendored `docs/count.js` are
 excluded (see `biome.json`). CI (`ci.yml`) runs Biome + syntax + tests on every
-push/PR; `pack.yml` asserts the tag matches `manifest.json`.
+push/PR (and again from `release.yml` before it ships); `pack.yml` asserts the
+tag matches `manifest.json`.
 
 Chrome Web Store publish (`publish-chrome.yml`) is wired but dormant until the
 four `CWS_*` secrets exist (see backlog story 34 / CHANGELOG). Firefox signs

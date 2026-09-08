@@ -12,16 +12,32 @@ name: Sign Firefox add-on
 #        AMO_JWT_ISSUER  = the "JWT issuer" (API key, starts with "user:")
 #        AMO_JWT_SECRET  = the "JWT secret"
 #
-# Then either push a tag vX.Y.Z (matching manifest.json) or run this manually.
+# After that a merge to main with a version bump signs and ships by itself
+# (release.yml); a hand-pushed tag vX.Y.Z or a manual run still work too.
 
 on:
   push:
     tags: ["v*"]
+  # release.yml calls this on a merge that carries a version bump; a called
+  # workflow's `github.ref` is main, so the tag has to be passed in.
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to attach the signed .xpi to (e.g. v1.1.0)"
+        required: true
+        type: string
+    # Declared, not inherited — the caller passes only these two.
+    secrets:
+      AMO_JWT_ISSUER:
+        required: false
+      AMO_JWT_SECRET:
+        required: false
   workflow_dispatch:
     inputs:
       tag:
         description: "Release tag to attach the signed .xpi to (e.g. v1.1.0)"
         required: true
+        type: string
 
 permissions:
   contents: write
@@ -44,8 +60,11 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # The TAGGED tree, not the pushed commit — see pack.yml.
       - uses: actions/checkout@v4
         if: steps.gate.outputs.run == 'true'
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.run == 'true'
@@ -114,12 +133,52 @@ jobs:
           fi
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
+      # Also kept as a workflow artifact. This add-on is self-distributed on
+      # Firefox, so the .xpi on the release *is* the Firefox channel — and AMO
+      # will not sign a version twice, so if attaching it were the only copy, a
+      # failure there would lose it for that version permanently.
+      - name: Keep the signed .xpi as an artifact
+        if: steps.sign.outputs.signed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: overhead-firefox-xpi-v${{ steps.manifest.outputs.version }}
+          path: web-ext-artifacts/*.xpi
+
       - name: Attach signed .xpi to release
         if: steps.sign.outputs.signed == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || format('v{0}', steps.manifest.outputs.version) }}
-          files: web-ext-artifacts/*.xpi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || format('v{0}', steps.manifest.outputs.version) }}
+          V: ${{ steps.manifest.outputs.version }}
+        run: |
+          set -euo pipefail
+          # The checked-out tree is the tag's, which for a tag predating this
+          # script does not carry it — fall back rather than fail the attach.
+          if [ -x .github/ensure-release.sh ]; then
+            .github/ensure-release.sh "$TAG" "$V"
+          elif ! gh release view "$TAG" >/dev/null 2>&1; then
+            # `|| gh release view` for the same reason ensure-release.sh re-checks:
+            # on a tag push both shippers race here and only one can create.
+            gh release create "$TAG" --title "$TAG" --generate-notes \
+              || gh release view "$TAG" >/dev/null
+          fi
+          gh release upload "$TAG" web-ext-artifacts/*.xpi --clobber
+
+      # AMO answering "version already exists" is a no-op for signing, but it is
+      # not a no-op for distribution: if that version's release carries no .xpi,
+      # Firefox users have nothing to install and re-running cannot fix it.
+      - name: Warn when the release has no .xpi
+        if: steps.gate.outputs.run == 'true' && steps.sign.outputs.signed != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || format('v{0}', steps.manifest.outputs.version) }}
+        run: |
+          set -uo pipefail
+          xpis=$(gh release view "$TAG" --json assets \
+                   --jq '[.assets[].name | select(endswith(".xpi"))] | length' 2>/dev/null || echo 0)
+          if [ "${xpis:-0}" -eq 0 ]; then
+            echo "::warning::$TAG has no .xpi and AMO will not re-sign this version — download it from the AMO developer hub, or bump the version to get a fresh signature."
+          fi
 
       # Mission control counts commits since the newest GitHub deployment record in this
       # project's environment (`deploy.environment` in ~/me/setup/mission-control/projects.json).
