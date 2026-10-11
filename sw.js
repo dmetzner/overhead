@@ -21,12 +21,23 @@ async function sync() {
   lastSig = status.ok ? sig : null;
 }
 
-browser.runtime.onInstalled.addListener(sync);
-browser.runtime.onStartup.addListener(sync);
+// Run applies one at a time. Every save writes storage.sync then storage.local,
+// so onChanged fires twice back-to-back; two overlapping applies would read the
+// same installed rule ids and the second would re-add id 1 as a duplicate,
+// fail closed and strip the rule the first just installed. Serialized, the
+// second run sees the fresh lastSig and returns early.
+let queue = Promise.resolve();
+function queueSync() {
+  queue = queue.then(sync).catch(() => {}); // keep the queue alive after a failure
+  return queue;
+}
+
+browser.runtime.onInstalled.addListener(queueSync);
+browser.runtime.onStartup.addListener(queueSync);
 
 // Config lives in storage.sync; fetched catalogs (incl. their on/off state) in
 // storage.local — watch both so endpoint toggles still re-apply.
 browser.storage.onChanged.addListener((changes, area) => {
   if ((area === "sync" && changes[STORAGE_KEY]) || (area === "local" && changes[CATALOG_KEY]))
-    sync();
+    queueSync();
 });
