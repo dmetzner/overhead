@@ -2,6 +2,14 @@
 
 All notable changes to Overhead. Versions match `manifest.json` / release tags.
 
+## 2.5.1
+
+- **A save no longer strips its own rule:** every save writes `storage.sync` then
+  `storage.local`, so two change events fired back-to-back and two overlapping
+  applies both tried to add rule id 1 — the second was rejected as a duplicate,
+  failed closed and removed the rule the first had just installed. Applies are
+  now serialized; the second sees the fresh signature and returns early.
+
 ## 2.5.0
 
 Follow-up audit — collapse the duplicated share decoder and warn on credential
