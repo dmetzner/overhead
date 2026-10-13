@@ -31,7 +31,7 @@ jobs:
       # the same; on a resume (release.yml can re-enter a half-finished release
       # from a later push) they are not, and building `github.sha` would attach
       # assets built from the wrong source to that version's release.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.tag || github.ref }}
 
@@ -91,7 +91,7 @@ jobs:
           (cd ff && zip -MM -r "../overhead-firefox-v${V}.zip" . -x "*.DS_Store")
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: overhead-v${{ steps.manifest.outputs.version }}
           path: overhead-*-v${{ steps.manifest.outputs.version }}.zip
