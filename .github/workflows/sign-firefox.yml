@@ -46,12 +46,14 @@ permissions:
 jobs:
   sign:
     runs-on: ubuntu-latest
-    env:
-      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
-      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    # The AMO secrets are scoped to the two steps that need them, never the job:
+    # job-level env would hand the signing keys to every `npx` and test run below.
     steps:
       - name: Skip without AMO credentials
         id: gate
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
         run: |
           if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
             echo "::notice::AMO_JWT_* secrets not configured — skipping Firefox signing."
@@ -61,12 +63,12 @@ jobs:
           fi
 
       # The TAGGED tree, not the pushed commit — see pack.yml.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         if: steps.gate.outputs.run == 'true'
         with:
           ref: ${{ inputs.tag || github.ref }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.gate.outputs.run == 'true'
         with:
           node-version: "20"
@@ -113,9 +115,13 @@ jobs:
       - name: Sign (unlisted) via AMO
         id: sign
         if: steps.gate.outputs.run == 'true'
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        # web-ext is pinned exactly: this step holds the signing keys.
         run: |
           set +e
-          out=$(npx --yes web-ext@8 sign \
+          out=$(npx --yes web-ext@8.10.0 sign \
             --channel=unlisted \
             --source-dir dist \
             --artifacts-dir web-ext-artifacts \
@@ -139,7 +145,7 @@ jobs:
       # failure there would lose it for that version permanently.
       - name: Keep the signed .xpi as an artifact
         if: steps.sign.outputs.signed == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: overhead-firefox-xpi-v${{ steps.manifest.outputs.version }}
           path: web-ext-artifacts/*.xpi
