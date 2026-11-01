@@ -53,19 +53,14 @@ script rather than by a job-level `if`, because this job is meant to be a
 required status check and a job that never runs leaves a required check pending
 forever.
 
-**The job blocks nothing until it is required on `main`.** Today only `test` is,
-and `gh pr merge --auto` merges the moment the required checks pass — so a red
-`release-readiness` stops nobody. To close that:
+**The job only blocks because it is required on `main`.** Branch protection
+requires `test` and `release-readiness`, with `strict=true`; `gh pr merge --auto`
+merges the moment the required checks pass, so dropping `release-readiness` from
+that list means a red one stops nobody. `strict=true` matters as well: without it
+two PRs can both bump 2.5.0 → 2.6.0 against a stale base, and the second one
+ships nowhere.
 
-```bash
-gh api -X PATCH repos/dmetzner/overhead/branches/main/protection/required_status_checks \
-  -f strict=true -f 'contexts[]=test' -f 'contexts[]=release-readiness'
-```
-
-`strict=true` matters as well: without it two PRs can both bump 2.5.0 → 2.6.0
-against a stale base, and the second one ships nowhere.
-
-Until then, `release.yml`'s `guard` job is the `main`-side twin: it fails when a
+`release.yml`'s `guard` job is the `main`-side twin: it fails when a
 push changed shipped runtime files while that version is already tagged. `guard`
 is deliberately *not* a dependency of the release chain, so it can go red while
 a resume still finishes the tagged version off.
@@ -124,7 +119,8 @@ Two things to know about that skip, when the `CWS_*` secrets land:
 - **It trusts the version number as a proxy for the package.** A draft sitting at
   this version that this repo did not build gets published as-is; the CWS item
   resource exposes no hash to check it against. The likely first encounter is
-  the setup itself: step 1 above is "publish v1 manually", so the first
+  the setup itself: step 1 of the setup in `publish-chrome.yml`'s header is "publish v1
+  manually", so the first
   automated release of *that same version* would skip its own upload and publish
   the hand-uploaded package. Bump before the first automated release, or expect
   the notice. In the case the skip exists for — upload succeeded, publish failed
