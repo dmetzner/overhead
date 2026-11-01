@@ -63,8 +63,8 @@ syntax + tests on every push/PR, and again from `release.yml` before it ships.
   *and* the release *and* both zips — a tag alone isn't, or a run that died after tagging makes
   every retry a green no-op. Don't reintroduce a `|| echo 0` on the zip count: `--clobber`
   deletes before it uploads, so a guessed zero destroys a good release.
-- **`ci.yml`'s `release-readiness` is what makes "every merge releases" true**, and it blocks
-  nothing until it is a *required* check on `main`. Keep it a job that always runs and decides
+- **`ci.yml`'s `release-readiness` is what makes "every merge releases" true**, and only as a
+  *required* check on `main` (it is, with `test`, `strict=true`) — never drop it from that list. Keep it a job that always runs and decides
   inside the script — a skipped job leaves a required check pending forever. `release.yml`'s
   `guard` job is its `main`-side twin and is deliberately not a dependency of the release chain.
 

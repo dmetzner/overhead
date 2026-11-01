@@ -176,8 +176,10 @@ link, a link carrying a token or secret should be shared with care.
 
 ## Releasing
 
-Pushing a tag `vX.Y.Z` (matching `manifest.json`) cuts a GitHub Release and runs
-two workflows against it:
+Merging a pull request that bumps `manifest.json` is the release:
+[`release.yml`](.github/workflows/release.yml) tags `vX.Y.Z`, cuts the GitHub Release
+and runs the shipping workflows against it (a hand-pushed tag still works). The
+reasoning: [`.github/RELEASE.md`](.github/RELEASE.md).
 
 - [Pack extension](.github/workflows/pack.yml) — builds and attaches the
   per-browser `overhead-chrome-v*.zip` and `overhead-firefox-v*.zip` (dev
@@ -188,13 +190,15 @@ two workflows against it:
   It authenticates with the `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` repo secrets
   (from [AMO → API keys](https://addons.mozilla.org/developers/addon/api/key/));
   rotate them there if they ever need refreshing.
+- [Publish to Chrome Web Store](.github/workflows/publish-chrome.yml) — wired
+  but dormant until the `CWS_*` repo secrets exist.
 
 ## How it works
 
 Manifest V3 removed blocking `webRequest`, so headers are set declaratively via
 [`declarativeNetRequest.updateDynamicRules`](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest).
 One dynamic rule holds a `modifyHeaders` action with one `set` entry per active
-header. State lives in `storage.sync`; the background script rebuilds the rule
+header. Config lives in `storage.sync` (fetched catalogs in `storage.local`); the background script rebuilds the rule
 whenever state changes.
 
 The same source runs on both browsers: every API call goes through
